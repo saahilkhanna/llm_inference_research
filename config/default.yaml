@@ -1,0 +1,38 @@
+public_tasks:
+  - id: humaneval_coding
+    dataset: openai/openai_humaneval
+    subset: default
+    split: test
+    grading: contains
+    workload_class: medium
+  - id: gsm8k_main
+    dataset: gsm8k
+    subset: main
+    split: test
+    grading: numeric
+    workload_class: medium
+  - id: competition_math
+    dataset: hendrycks/competition_math
+    subset: default
+    split: test
+    grading: numeric
+    workload_class: medium
+  - id: longbench_v2_slice
+    dataset: THUDM/LongBench-v2
+    subset: default
+    split: train
+    grading: numeric
+    workload_class: long
+
+custom_workload:
+  short_ratio: 0.33
+  medium_ratio: 0.33
+  long_ratio: 0.34
+  long_context_min_chars: 9000
+  include_freeform_samples: true
+
+generation:
+  stop: []
+
+analysis:
+  case_studies_per_bucket: 3

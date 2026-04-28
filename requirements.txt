@@ -1,0 +1,10 @@
+python-dotenv
+PyYAML
+pandas
+numpy
+requests
+datasets
+huggingface_hub
+tqdm
+lm-eval
+tenacity
