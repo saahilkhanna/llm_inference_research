@@ -74,26 +74,67 @@ def _run_pipeline(mode: str) -> int:
         optimization_modes = ["baseline"] if smoke else config.optimization_modes
         repeats = 1 if smoke else config.repeats_per_condition
 
+        total_conditions = len(optimization_modes) * repeats * len(config.engines)
+        condition_index = 0
+
         for optimization_mode in optimization_modes:
             for repeat_index in range(1, repeats + 1):
                 for engine in config.engines:
+                    condition_index += 1
+                    write_json(
+                        run_dir / "logs" / "progress_status.json",
+                        {
+                            "stage": "running_samples",
+                            "condition_index": condition_index,
+                            "total_conditions": total_conditions,
+                            "engine": engine,
+                            "optimization_mode": optimization_mode,
+                            "repeat_index": repeat_index,
+                            "timestamp_utc": utc_now_iso(),
+                        },
+                    )
+                    endpoint_url = config.endpoint_url_for(engine, optimization_mode, endpoints[engine].url)
                     run_samples_for_backend(
                         engine,
-                        endpoints[engine].url,
+                        endpoint_url,
                         all_samples,
                         config,
                         run_dir,
                         optimization_mode=optimization_mode,
                         repeat_index=repeat_index,
                     )
+                    write_json(
+                        run_dir / "logs" / "progress_status.json",
+                        {
+                            "stage": "running_standard_evaluator",
+                            "condition_index": condition_index,
+                            "total_conditions": total_conditions,
+                            "engine": engine,
+                            "optimization_mode": optimization_mode,
+                            "repeat_index": repeat_index,
+                            "timestamp_utc": utc_now_iso(),
+                        },
+                    )
                     run_standard_evaluator(
                         config=config,
                         run_dir=run_dir,
                         backend=engine,
-                        endpoint_url=endpoints[engine].url,
+                        endpoint_url=endpoint_url,
                         optimization_mode=optimization_mode,
                         repeat_index=repeat_index,
                         smoke=smoke,
+                    )
+                    write_json(
+                        run_dir / "logs" / "progress_status.json",
+                        {
+                            "stage": "condition_completed",
+                            "condition_index": condition_index,
+                            "total_conditions": total_conditions,
+                            "engine": engine,
+                            "optimization_mode": optimization_mode,
+                            "repeat_index": repeat_index,
+                            "timestamp_utc": utc_now_iso(),
+                        },
                     )
 
         for engine in config.engines:

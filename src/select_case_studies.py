@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+from pandas.errors import EmptyDataError
 
 from .normalize_outputs import normalize_text
 from .utils import ensure_dir
@@ -22,7 +23,12 @@ def select_case_studies(run_dir: Path, per_bucket: int = 3) -> dict[str, Path]:
     df_list = []
     for path in (public_path, custom_path):
         if path.exists():
-            df_list.append(pd.read_csv(path))
+            try:
+                df = pd.read_csv(path)
+            except EmptyDataError:
+                continue
+            if not df.empty:
+                df_list.append(df)
     merged = pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
 
     ensure_dir(run_dir / "case_studies")

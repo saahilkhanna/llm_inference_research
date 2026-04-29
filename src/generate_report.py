@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+from pandas.errors import EmptyDataError
 
 from .config import AppConfig
 from .utils import ensure_dir
@@ -10,7 +11,10 @@ from .utils import ensure_dir
 
 def _safe_read_csv(path: Path) -> pd.DataFrame:
     if path.exists():
-        return pd.read_csv(path)
+        try:
+            return pd.read_csv(path)
+        except EmptyDataError:
+            return pd.DataFrame()
     return pd.DataFrame()
 
 

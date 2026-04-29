@@ -123,7 +123,11 @@ def run_samples_for_backend(
     repeat_index: int = 1,
 ) -> Path:
     out_path = run_dir / "raw" / f"responses_{backend}.jsonl"
-    for sample in samples:
+    progress_log = run_dir / "logs" / "run_progress.jsonl"
+    total = len(samples)
+    started = time.perf_counter()
+    checkpoint_every = max(1, total // 10)
+    for idx, sample in enumerate(samples, start=1):
         start = time.perf_counter()
         start_iso = _now_iso()
         success = True
@@ -167,4 +171,22 @@ def run_samples_for_backend(
             "token_counts": raw_response.get("usage", {}),
         }
         append_jsonl(out_path, record)
+        if idx == 1 or idx == total or idx % checkpoint_every == 0:
+            elapsed = max(0.0, time.perf_counter() - started)
+            avg_per_sample = elapsed / idx if idx else 0.0
+            remaining = max(0.0, (total - idx) * avg_per_sample)
+            append_jsonl(
+                progress_log,
+                {
+                    "event": "samples_progress",
+                    "backend": backend,
+                    "optimization_mode": optimization_mode,
+                    "repeat_index": repeat_index,
+                    "completed_samples": idx,
+                    "total_samples": total,
+                    "percent_complete": round((idx / total) * 100.0, 2) if total else 100.0,
+                    "elapsed_seconds": elapsed,
+                    "eta_remaining_seconds": remaining,
+                },
+            )
     return out_path

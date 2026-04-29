@@ -73,7 +73,12 @@ def compare_backends(graded_df: pd.DataFrame, run_dir: Path) -> dict[str, Path]:
     public_cmp.to_csv(public_path, index=False)
     custom_cmp.to_csv(custom_path, index=False)
 
-    bucket_df = pd.concat([public_cmp[["bucket"]], custom_cmp[["bucket"]]], ignore_index=True)
+    bucket_parts: list[pd.DataFrame] = []
+    if "bucket" in public_cmp.columns:
+        bucket_parts.append(public_cmp[["bucket"]])
+    if "bucket" in custom_cmp.columns:
+        bucket_parts.append(custom_cmp[["bucket"]])
+    bucket_df = pd.concat(bucket_parts, ignore_index=True) if bucket_parts else pd.DataFrame(columns=["bucket"])
     if bucket_df.empty:
         summary = pd.DataFrame(columns=["bucket", "count"])
     else:

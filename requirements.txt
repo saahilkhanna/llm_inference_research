@@ -8,3 +8,4 @@ huggingface_hub
 tqdm
 lm-eval
 tenacity
+antlr4-python3-runtime

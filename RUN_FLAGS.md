@@ -14,6 +14,14 @@ RESULTS_DIR=real_results CREATE_ENDPOINTS=false BACKEND_API_STYLE=openai_chat ma
 RESULTS_DIR=real_results CREATE_ENDPOINTS=false BACKEND_API_STYLE=openai_chat make all
 ```
 
+### 2c) Online benchmarks only (no custom workload)
+```bash
+RESULTS_DIR=real_results \
+CREATE_ENDPOINTS=false \
+BACKEND_API_STYLE=openai_chat \
+make online
+```
+
 ### 2b) Professor-style matrix run (Control + vLLM + SGLang, 3 repeats)
 ```bash
 ENGINES=llama_cpp,vllm,sglang \
@@ -61,6 +69,10 @@ Values are loaded from `.env` and can be overridden inline per command.
   - URL for vLLM endpoint in manual mode.
 - `SGLANG_ENDPOINT_URL`
   - URL for SGLang endpoint in manual mode.
+- `VLLM_ENDPOINT_URL_BASELINE`, `VLLM_ENDPOINT_URL_KV_CACHE_QUANT`, `VLLM_ENDPOINT_URL_SPEC_DECODE`
+  - Optional per-mode vLLM URLs. If set, these override `VLLM_ENDPOINT_URL` for that mode.
+- `SGLANG_ENDPOINT_URL_BASELINE`, `SGLANG_ENDPOINT_URL_KV_CACHE_QUANT`, `SGLANG_ENDPOINT_URL_SPEC_DECODE`
+  - Optional per-mode SGLang URLs. If set, these override `SGLANG_ENDPOINT_URL` for that mode.
 - `TARGET_LLM_BASE_URL`
   - Convenience alias. If set while both backend URLs are empty, project uses this single URL for both backends and disables auto-create.
 - `CREATE_ENDPOINTS`
@@ -131,6 +143,7 @@ Values are loaded from `.env` and can be overridden inline per command.
   - Enable public benchmark sample set.
 - `CUSTOM_WORKLOAD_ENABLED`
   - Enable custom Edge/IoT workload.
+  - Set `false` to run online/public benchmarks only.
 - `CUSTOM_WORKLOAD_SIZE`
   - Number of custom samples to generate.
 
@@ -194,6 +207,36 @@ BACKEND_API_STYLE=openai_chat \
 make smoke
 ```
 Use only for wiring checks, not true backend comparison conclusions.
+
+### True optimization ablation (recommended)
+Use separate endpoint URLs per optimization mode so each condition is actually different server-side:
+```bash
+CREATE_ENDPOINTS=false \
+ENGINES=vllm,sglang \
+OPTIMIZATION_MODES=baseline,kv_cache_quant,spec_decode \
+VLLM_ENDPOINT_URL_BASELINE=https://... \
+VLLM_ENDPOINT_URL_KV_CACHE_QUANT=https://... \
+VLLM_ENDPOINT_URL_SPEC_DECODE=https://... \
+SGLANG_ENDPOINT_URL_BASELINE=https://... \
+SGLANG_ENDPOINT_URL_KV_CACHE_QUANT=https://... \
+SGLANG_ENDPOINT_URL_SPEC_DECODE=https://... \
+STANDARD_EVAL_ENABLED=true \
+STANDARD_EVALUATOR=lm_eval \
+STANDARD_EVAL_TASKS=gsm8k,hendrycks_math,mbpp \
+STANDARD_EVAL_RUN_ON_ALL_CONDITIONS=true \
+make all
+```
+
+### Public benchmark focus with stronger online tasks
+```bash
+CUSTOM_WORKLOAD_ENABLED=false \
+STANDARD_EVAL_ENABLED=true \
+STANDARD_EVALUATOR=lm_eval \
+STANDARD_EVAL_TASKS=gsm8k_platinum,hendrycks_math500,minerva_math,humaneval_instruct \
+STANDARD_EVAL_RUN_ON_ALL_CONDITIONS=true \
+STANDARD_EVAL_LIMIT_OVERRIDE=30 \
+make online
+```
 
 ---
 

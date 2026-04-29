@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: setup smoke all shutdown clean
+.PHONY: setup smoke all online shutdown clean
 
 setup:
 	bash scripts/setup_env.sh
@@ -10,6 +10,9 @@ smoke:
 
 all:
 	bash scripts/run_all.sh
+
+online:
+	bash scripts/run_online_benchmarks.sh
 
 shutdown:
 	bash scripts/shutdown_endpoints.sh

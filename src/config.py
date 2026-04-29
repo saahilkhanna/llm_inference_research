@@ -41,6 +41,12 @@ class AppConfig:
     fallback_model_id: str
     vllm_endpoint_url: str
     sglang_endpoint_url: str
+    vllm_endpoint_url_baseline: str
+    vllm_endpoint_url_kv_cache_quant: str
+    vllm_endpoint_url_spec_decode: str
+    sglang_endpoint_url_baseline: str
+    sglang_endpoint_url_kv_cache_quant: str
+    sglang_endpoint_url_spec_decode: str
     create_endpoints: bool
     shutdown_mode: str
     run_backends_sequentially: bool
@@ -105,9 +111,25 @@ class AppConfig:
         if self.create_endpoints and not self.hf_token:
             raise ValueError("HF_TOKEN is required when CREATE_ENDPOINTS=true.")
         if not self.create_endpoints:
-            if "vllm" in self.engines and not self.vllm_endpoint_url:
+            has_any_vllm_url = any(
+                [
+                    self.vllm_endpoint_url,
+                    self.vllm_endpoint_url_baseline,
+                    self.vllm_endpoint_url_kv_cache_quant,
+                    self.vllm_endpoint_url_spec_decode,
+                ]
+            )
+            has_any_sglang_url = any(
+                [
+                    self.sglang_endpoint_url,
+                    self.sglang_endpoint_url_baseline,
+                    self.sglang_endpoint_url_kv_cache_quant,
+                    self.sglang_endpoint_url_spec_decode,
+                ]
+            )
+            if "vllm" in self.engines and not has_any_vllm_url:
                 raise ValueError("Set VLLM_ENDPOINT_URL when running vllm in manual mode.")
-            if "sglang" in self.engines and not self.sglang_endpoint_url:
+            if "sglang" in self.engines and not has_any_sglang_url:
                 raise ValueError("Set SGLANG_ENDPOINT_URL when running sglang in manual mode.")
         if "llama_cpp" in self.engines and not self.llama_cpp_endpoint_url:
             raise ValueError("Set LLAMA_CPP_ENDPOINT_URL when ENGINES includes llama_cpp.")
@@ -119,6 +141,23 @@ class AppConfig:
             raise ValueError("MAX_NEW_TOKENS must be > 0.")
         if self.effective_limit(False) <= 0 or self.smoke_limit <= 0:
             raise ValueError("LIMIT and SMOKE_LIMIT must be > 0.")
+
+    def endpoint_url_for(self, engine: str, optimization_mode: str, default_url: str) -> str:
+        if engine == "vllm":
+            by_mode = {
+                "baseline": self.vllm_endpoint_url_baseline,
+                "kv_cache_quant": self.vllm_endpoint_url_kv_cache_quant,
+                "spec_decode": self.vllm_endpoint_url_spec_decode,
+            }
+            return by_mode.get(optimization_mode, "") or self.vllm_endpoint_url or default_url
+        if engine == "sglang":
+            by_mode = {
+                "baseline": self.sglang_endpoint_url_baseline,
+                "kv_cache_quant": self.sglang_endpoint_url_kv_cache_quant,
+                "spec_decode": self.sglang_endpoint_url_spec_decode,
+            }
+            return by_mode.get(optimization_mode, "") or self.sglang_endpoint_url or default_url
+        return default_url
 
 
 def load_config(env_path: str = ".env", defaults_path: str = "config/default.yaml") -> AppConfig:
@@ -149,6 +188,12 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
         fallback_model_id=os.getenv("FALLBACK_MODEL_ID", "Qwen/Qwen2.5-7B-Instruct"),
         vllm_endpoint_url=vllm_url,
         sglang_endpoint_url=sglang_url,
+        vllm_endpoint_url_baseline=os.getenv("VLLM_ENDPOINT_URL_BASELINE", "").strip(),
+        vllm_endpoint_url_kv_cache_quant=os.getenv("VLLM_ENDPOINT_URL_KV_CACHE_QUANT", "").strip(),
+        vllm_endpoint_url_spec_decode=os.getenv("VLLM_ENDPOINT_URL_SPEC_DECODE", "").strip(),
+        sglang_endpoint_url_baseline=os.getenv("SGLANG_ENDPOINT_URL_BASELINE", "").strip(),
+        sglang_endpoint_url_kv_cache_quant=os.getenv("SGLANG_ENDPOINT_URL_KV_CACHE_QUANT", "").strip(),
+        sglang_endpoint_url_spec_decode=os.getenv("SGLANG_ENDPOINT_URL_SPEC_DECODE", "").strip(),
         create_endpoints=create_endpoints_default,
         shutdown_mode=os.getenv("SHUTDOWN_MODE", "pause"),
         run_backends_sequentially=_to_bool(os.getenv("RUN_BACKENDS_SEQUENTIALLY"), True),
