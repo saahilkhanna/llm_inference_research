@@ -132,6 +132,7 @@ class AppConfig:
     endpoint_notifications_email: bool
     endpoint_notifications_push: bool
     endpoint_tensor_parallel_size: int
+    endpoint_ready_timeout_seconds: int
     vllm_engine_image_url: str
     sglang_engine_image_url: str
     vllm_engine_port: int
@@ -318,6 +319,8 @@ class AppConfig:
             raise ValueError("MAX_NEW_TOKENS must be > 0.")
         if self.effective_limit(False) <= 0 or self.smoke_limit <= 0:
             raise ValueError("LIMIT and SMOKE_LIMIT must be > 0.")
+        if self.endpoint_ready_timeout_seconds < 60:
+            raise ValueError("ENDPOINT_READY_TIMEOUT_SECONDS must be >= 60.")
 
 def load_config(env_path: str = ".env", defaults_path: str = "config/default.yaml") -> AppConfig:
     load_dotenv(env_path, override=False)
@@ -400,6 +403,7 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
         endpoint_notifications_email=_to_bool(os.getenv("ENDPOINT_NOTIFICATIONS_EMAIL"), True),
         endpoint_notifications_push=_to_bool(os.getenv("ENDPOINT_NOTIFICATIONS_PUSH"), True),
         endpoint_tensor_parallel_size=_to_int(os.getenv("ENDPOINT_TENSOR_PARALLEL_SIZE"), 1),
+        endpoint_ready_timeout_seconds=_to_int(os.getenv("ENDPOINT_READY_TIMEOUT_SECONDS"), 1800),
         vllm_engine_image_url=os.getenv("VLLM_ENGINE_IMAGE_URL", "vllm/vllm-openai:v0.16.0"),
         sglang_engine_image_url=os.getenv("SGLANG_ENGINE_IMAGE_URL", "lmsysorg/sglang:v0.5.8"),
         vllm_engine_port=_to_int(os.getenv("VLLM_ENGINE_PORT"), 8000),

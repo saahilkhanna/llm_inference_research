@@ -294,8 +294,14 @@ def _wait_for_ready(config: AppConfig, endpoint_name: str, logs_path: Path, time
     url = f"{_api_base(config)}/{endpoint_name}"
     while time.monotonic() < deadline:
         status_code, data = _request_json(config, "GET", url)
+        # Parallel creates sometimes return 404 briefly until the resource is visible (HF API propagation).
         if status_code == 404:
-            raise RuntimeError(f"{endpoint_name} not found while waiting for readiness")
+            append_jsonl(
+                logs_path,
+                {"event": "endpoint_poll_not_visible_yet", "name": endpoint_name, "status_code": status_code},
+            )
+            time.sleep(poll_seconds)
+            continue
         if status_code >= 400:
             raise RuntimeError(f"Failed polling {endpoint_name}: HTTP {status_code} - {data}")
 
@@ -361,7 +367,7 @@ def create_endpoint_if_needed(
         },
     )
     _create_or_replace_endpoint(config, payload, logs_path)
-    endpoint_url = _wait_for_ready(config, name, logs_path)
+    endpoint_url = _wait_for_ready(config, name, logs_path, timeout_seconds=config.endpoint_ready_timeout_seconds)
     append_jsonl(
         logs_path,
         {
@@ -453,6 +459,7 @@ def apply_shutdown_mode(config: AppConfig, endpoints: dict[str, Any], run_dir: P
         return
 
     from huggingface_hub import HfApi  # type: ignore
+    from huggingface_hub.errors import HfHubHTTPError  # type: ignore
 
     api = HfApi(token=config.hf_token) if config.hf_token else HfApi()
     logs_path = run_dir / "logs" / "endpoint_shutdown.jsonl"
@@ -465,7 +472,17 @@ def apply_shutdown_mode(config: AppConfig, endpoints: dict[str, Any], run_dir: P
         if not created or not name or name.startswith("manual-"):
             append_jsonl(logs_path, {"event": "skip_shutdown_manual", "key": key, "name": name})
             continue
-        endpoint = api.get_inference_endpoint(name=name, namespace=config.hf_namespace or None)
+        try:
+            endpoint = api.get_inference_endpoint(name=name, namespace=config.hf_namespace or None)
+        except HfHubHTTPError as exc:
+            code = getattr(getattr(exc, "response", None), "status_code", None)
+            if code == 404:
+                append_jsonl(
+                    logs_path,
+                    {"event": "skip_shutdown_endpoint_missing", "key": key, "name": name, "detail": str(exc)},
+                )
+                continue
+            raise
         if config.shutdown_mode == "pause":
             endpoint.pause()
         elif config.shutdown_mode == "scale_to_zero":

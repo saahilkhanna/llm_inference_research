@@ -41,7 +41,17 @@ With managed endpoints you do **not** paste seven URLs: the resolver holds one U
 
 Use these from the repository root after `make setup` and activating the venv (the scripts below source it when needed).
 
+### Single workload (GSM8K only, full `LIMIT` per task)
+
+For apples-to-apples accuracy across engines and optimization modes, restrict public tasks to **`gsm8k_main`** and turn off custom workloads and duplicate `lm_eval` runs. Otherwise `LIMIT` is **split across every enabled public task** (e.g. four tasks × 20 rows when `LIMIT=80`), which dilutes power and mixes grader behaviors.
+
 ```bash
+make single-workload
+# Defaults: ENGINES=llama_cpp,vllm,sglang and RUN_BACKENDS_SEQUENTIALLY=false (parallel conditions).
+# Optional: LIMIT=250 make single-workload
+# Sequential backends only: RUN_BACKENDS_SEQUENTIALLY=true make single-workload
+# Env vars already set in the shell win over .env (see scripts/run_single_workload_gsm8k.sh).
+
 # Quick sanity check (smoke scope)
 make smoke
 # Equivalent: bash scripts/run_smoke.sh
