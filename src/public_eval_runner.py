@@ -27,14 +27,19 @@ def _openai_chat_url(base_url: str) -> str:
 
 
 def _call_openai_chat(
-    endpoint_url: str, config: AppConfig, prompt: str, token: str, extra_params: dict[str, Any] | None = None
+    endpoint_url: str,
+    config: AppConfig,
+    prompt: str,
+    token: str,
+    model_id: str,
+    extra_params: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     url = _openai_chat_url(endpoint_url)
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     payload = {
-        "model": config.model_id,
+        "model": model_id,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": config.temperature,
         "top_p": config.top_p,
@@ -50,7 +55,12 @@ def _call_openai_chat(
 
 
 def _call_tgi(
-    endpoint_url: str, config: AppConfig, prompt: str, token: str, extra_params: dict[str, Any] | None = None
+    endpoint_url: str,
+    config: AppConfig,
+    prompt: str,
+    token: str,
+    model_id: str,
+    extra_params: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     headers = {"Content-Type": "application/json"}
     if token:
@@ -89,13 +99,20 @@ def _optimization_hints(config: AppConfig, optimization_mode: str) -> dict[str, 
 
 
 def call_backend(endpoint_url: str, config: AppConfig, prompt: str, optimization_mode: str) -> tuple[str, dict[str, Any]]:
+    return call_backend_for_engine(endpoint_url, config, prompt, optimization_mode, "unknown")
+
+
+def call_backend_for_engine(
+    endpoint_url: str, config: AppConfig, prompt: str, optimization_mode: str, backend: str
+) -> tuple[str, dict[str, Any]]:
     style = config.backend_api_style
     errors: list[str] = []
     hints = _optimization_hints(config, optimization_mode)
+    model_id = config.model_id_for_backend(backend)
 
     if style in {"auto", "openai_chat"}:
         try:
-            text, raw = _call_openai_chat(endpoint_url, config, prompt, config.hf_token, hints)
+            text, raw = _call_openai_chat(endpoint_url, config, prompt, config.hf_token, model_id, hints)
             raw["_optimization_hints"] = hints
             return text, raw
         except Exception as exc:  # noqa: BLE001
@@ -104,7 +121,7 @@ def call_backend(endpoint_url: str, config: AppConfig, prompt: str, optimization
                 raise
     if style in {"auto", "tgi"}:
         try:
-            text, raw = _call_tgi(endpoint_url, config, prompt, config.hf_token, hints)
+            text, raw = _call_tgi(endpoint_url, config, prompt, config.hf_token, model_id, hints)
             raw["_optimization_hints"] = hints
             return text, raw
         except Exception as exc:  # noqa: BLE001
@@ -122,7 +139,7 @@ def run_samples_for_backend(
     optimization_mode: str = "baseline",
     repeat_index: int = 1,
 ) -> Path:
-    out_path = run_dir / "raw" / f"responses_{backend}.jsonl"
+    out_path = run_dir / "raw" / f"responses_{backend}_{optimization_mode}_repeat_{repeat_index}.jsonl"
     progress_log = run_dir / "logs" / "run_progress.jsonl"
     total = len(samples)
     started = time.perf_counter()
@@ -136,7 +153,9 @@ def run_samples_for_backend(
         raw_response: dict[str, Any] = {}
 
         try:
-            response_text, raw_response = call_backend(endpoint_url, config, sample["prompt"], optimization_mode)
+            response_text, raw_response = call_backend_for_engine(
+                endpoint_url, config, sample["prompt"], optimization_mode, backend
+            )
         except Exception as exc:  # noqa: BLE001
             success = False
             error_message = str(exc)
@@ -167,6 +186,7 @@ def run_samples_for_backend(
                 "temperature": config.temperature,
                 "top_p": config.top_p,
                 "max_new_tokens": config.max_new_tokens,
+                "model_id": config.model_id_for_backend(backend),
             },
             "token_counts": raw_response.get("usage", {}),
         }

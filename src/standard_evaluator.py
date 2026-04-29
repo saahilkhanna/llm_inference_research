@@ -69,13 +69,14 @@ def run_standard_evaluator(
 
     base_url = endpoint_url.rstrip("/") + "/v1/chat/completions"
     task_str = ",".join(config.standard_eval_tasks)
+    model_id = config.model_id_for_backend(backend)
     cmd = [
         "lm_eval",
         "run",
         "--model",
         "local-chat-completions",
         "--model_args",
-        f"model={config.model_id},base_url={base_url}",
+        f"model={model_id},base_url={base_url}",
         "--tasks",
         task_str,
         "--limit",

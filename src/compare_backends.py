@@ -58,17 +58,32 @@ def _compare_subset(df: pd.DataFrame) -> pd.DataFrame:
 
 def compare_backends(graded_df: pd.DataFrame, run_dir: Path) -> dict[str, Path]:
     ensure_dir(run_dir / "processed")
-    # Pairwise comparison remains vLLM vs SGLang for primary bucket artifacts.
-    pair_df = graded_df[graded_df["backend"].isin(["vllm", "sglang"])].copy()
-    public_df = pair_df[pair_df["workload"] == "public"].copy()
-    custom_df = pair_df[pair_df["workload"] == "custom"].copy()
-
-    public_cmp = _compare_subset(public_df)
-    custom_cmp = _compare_subset(custom_df)
-
     public_path = run_dir / "processed" / "public_per_sample_comparison.csv"
     custom_path = run_dir / "processed" / "custom_per_sample_comparison.csv"
     summary_path = run_dir / "processed" / "failure_bucket_summary.csv"
+    engine_summary_path = run_dir / "processed" / "engine_mode_summary.csv"
+
+    if graded_df.empty:
+        pd.DataFrame().to_csv(public_path, index=False)
+        pd.DataFrame().to_csv(custom_path, index=False)
+        pd.DataFrame(columns=["bucket", "count"]).to_csv(summary_path, index=False)
+        pd.DataFrame(
+            columns=["backend", "optimization_mode", "repeat_index", "workload", "correct_rate", "wrong_rate", "unknown_rate"]
+        ).to_csv(engine_summary_path, index=False)
+        return {
+            "public_comparison": public_path,
+            "custom_comparison": custom_path,
+            "bucket_summary": summary_path,
+            "engine_mode_summary": engine_summary_path,
+        }
+
+    # Comparison tables include every configured engine. The primary failure bucket
+    # remains vLLM vs SGLang so older reports stay comparable.
+    public_df = graded_df[graded_df["workload"] == "public"].copy()
+    custom_df = graded_df[graded_df["workload"] == "custom"].copy()
+
+    public_cmp = _compare_subset(public_df)
+    custom_cmp = _compare_subset(custom_df)
 
     public_cmp.to_csv(public_path, index=False)
     custom_cmp.to_csv(custom_path, index=False)
@@ -86,31 +101,25 @@ def compare_backends(graded_df: pd.DataFrame, run_dir: Path) -> dict[str, Path]:
     summary.to_csv(summary_path, index=False)
 
     # Additional per-engine summary across all configured engines/modes/repeats.
-    engine_summary_path = run_dir / "processed" / "engine_mode_summary.csv"
-    if graded_df.empty:
-        pd.DataFrame(
-            columns=["backend", "optimization_mode", "repeat_index", "workload", "correct_rate", "wrong_rate", "unknown_rate"]
-        ).to_csv(engine_summary_path, index=False)
-    else:
-        df = graded_df.copy()
-        if "optimization_mode" not in df.columns:
-            df["optimization_mode"] = "baseline"
-        if "repeat_index" not in df.columns:
-            df["repeat_index"] = 1
-        rows = []
-        for (backend, mode, rep, workload), grp in df.groupby(["backend", "optimization_mode", "repeat_index", "workload"]):
-            rows.append(
-                {
-                    "backend": backend,
-                    "optimization_mode": mode,
-                    "repeat_index": int(rep),
-                    "workload": workload,
-                    "correct_rate": float((grp["correctness"] == "correct").mean()),
-                    "wrong_rate": float((grp["correctness"] == "wrong").mean()),
-                    "unknown_rate": float((grp["correctness"] == "unknown").mean()),
-                }
-            )
-        pd.DataFrame(rows).to_csv(engine_summary_path, index=False)
+    df = graded_df.copy()
+    if "optimization_mode" not in df.columns:
+        df["optimization_mode"] = "baseline"
+    if "repeat_index" not in df.columns:
+        df["repeat_index"] = 1
+    rows = []
+    for (backend, mode, rep, workload), grp in df.groupby(["backend", "optimization_mode", "repeat_index", "workload"]):
+        rows.append(
+            {
+                "backend": backend,
+                "optimization_mode": mode,
+                "repeat_index": int(rep),
+                "workload": workload,
+                "correct_rate": float((grp["correctness"] == "correct").mean()),
+                "wrong_rate": float((grp["correctness"] == "wrong").mean()),
+                "unknown_rate": float((grp["correctness"] == "unknown").mean()),
+            }
+        )
+    pd.DataFrame(rows).to_csv(engine_summary_path, index=False)
 
     return {
         "public_comparison": public_path,

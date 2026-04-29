@@ -9,6 +9,12 @@ from .normalize_outputs import normalize_text
 from .utils import ensure_dir
 
 
+def _normalized_column(df: pd.DataFrame, column: str) -> pd.Series:
+    if column not in df.columns:
+        return pd.Series([""] * len(df), index=df.index)
+    return df[column].fillna("").astype(str).map(normalize_text)
+
+
 def _select_rows(df: pd.DataFrame, mask, n: int, label: str) -> pd.DataFrame:
     subset = df[mask].head(n).copy()
     if subset.empty:
@@ -42,10 +48,7 @@ def select_case_studies(run_dir: Path, per_bucket: int = 3) -> dict[str, Path]:
 
     both_correct_diff = merged[
         (merged.get("bucket") == "both_correct")
-        & (
-            merged.get("response_text_vllm", "").astype(str).map(normalize_text)
-            != merged.get("response_text_sglang", "").astype(str).map(normalize_text)
-        )
+        & (_normalized_column(merged, "response_text_vllm") != _normalized_column(merged, "response_text_sglang"))
     ]
 
     studies = pd.concat(

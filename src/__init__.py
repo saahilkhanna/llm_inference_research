@@ -1,2 +1,2 @@
-"""Black-box vLLM vs SGLang study package."""
+"""Black-box inference backend study package."""
 

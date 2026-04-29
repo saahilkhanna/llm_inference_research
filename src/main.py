@@ -8,7 +8,7 @@ from .benchmark_selection import select_public_samples
 from .compare_backends import compare_backends
 from .config import load_config
 from .custom_workload import build_custom_workload
-from .endpoint_manager import EndpointInfo, apply_shutdown_mode, resolve_endpoints
+from .endpoint_manager import EndpointInfo, apply_shutdown_mode, endpoint_for_condition, resolve_endpoints
 from .generate_report import generate_final_report
 from .grade_outputs import grade_outputs
 from .parse_results import build_parsed_table
@@ -19,6 +19,14 @@ from .summarize_metrics import summarize_latency
 from .standard_evaluator import run_standard_evaluator
 from .tool_selection import generate_tool_selection_memo
 from .utils import build_run_id, ensure_dir, system_manifest, to_plain_dict, utc_now_iso, write_json
+
+
+def _redact_config(config_dict: dict) -> dict:
+    redacted = dict(config_dict)
+    for key in ["hf_token"]:
+        if key in redacted and redacted[key]:
+            redacted[key] = "[REDACTED]"
+    return redacted
 
 
 def _build_run_dir(results_root: str, run_name: str) -> tuple[str, Path]:
@@ -44,7 +52,7 @@ def _write_manifest(
         "status": status,
         "timestamp_utc": utc_now_iso(),
         "environment": system_manifest(),
-        "config": config_dict,
+        "config": _redact_config(config_dict),
         "endpoints": endpoints or {},
         "error": error,
     }
@@ -69,76 +77,85 @@ def _run_pipeline(mode: str) -> int:
         if not all_samples:
             raise RuntimeError("No samples were selected. Enable at least one workload.")
 
-        endpoints = resolve_endpoints(config, run_id=run_id, run_dir=run_dir)
-
         optimization_modes = ["baseline"] if smoke else config.optimization_modes
         repeats = 1 if smoke else config.repeats_per_condition
 
-        total_conditions = len(optimization_modes) * repeats * len(config.engines)
+        endpoints = resolve_endpoints(config, run_id=run_id, run_dir=run_dir, optimization_modes=optimization_modes)
+
+        conditions = []
+        for engine in config.engines:
+            # llama.cpp is used as a minimal production baseline: normal KV cache,
+            # without the optional optimization modes exercised on vLLM/SGLang.
+            engine_modes = ["baseline"] if engine == "llama_cpp" else optimization_modes
+            for optimization_mode in engine_modes:
+                for repeat_index in range(1, repeats + 1):
+                    conditions.append((optimization_mode, repeat_index, engine))
+
+        total_conditions = len(conditions)
         condition_index = 0
 
-        for optimization_mode in optimization_modes:
-            for repeat_index in range(1, repeats + 1):
-                for engine in config.engines:
-                    condition_index += 1
-                    write_json(
-                        run_dir / "logs" / "progress_status.json",
-                        {
-                            "stage": "running_samples",
-                            "condition_index": condition_index,
-                            "total_conditions": total_conditions,
-                            "engine": engine,
-                            "optimization_mode": optimization_mode,
-                            "repeat_index": repeat_index,
-                            "timestamp_utc": utc_now_iso(),
-                        },
-                    )
-                    endpoint_url = config.endpoint_url_for(engine, optimization_mode, endpoints[engine].url)
-                    run_samples_for_backend(
-                        engine,
-                        endpoint_url,
-                        all_samples,
-                        config,
-                        run_dir,
-                        optimization_mode=optimization_mode,
-                        repeat_index=repeat_index,
-                    )
-                    write_json(
-                        run_dir / "logs" / "progress_status.json",
-                        {
-                            "stage": "running_standard_evaluator",
-                            "condition_index": condition_index,
-                            "total_conditions": total_conditions,
-                            "engine": engine,
-                            "optimization_mode": optimization_mode,
-                            "repeat_index": repeat_index,
-                            "timestamp_utc": utc_now_iso(),
-                        },
-                    )
-                    run_standard_evaluator(
-                        config=config,
-                        run_dir=run_dir,
-                        backend=engine,
-                        endpoint_url=endpoint_url,
-                        optimization_mode=optimization_mode,
-                        repeat_index=repeat_index,
-                        smoke=smoke,
-                    )
-                    write_json(
-                        run_dir / "logs" / "progress_status.json",
-                        {
-                            "stage": "condition_completed",
-                            "condition_index": condition_index,
-                            "total_conditions": total_conditions,
-                            "engine": engine,
-                            "optimization_mode": optimization_mode,
-                            "repeat_index": repeat_index,
-                            "timestamp_utc": utc_now_iso(),
-                        },
-                    )
+        for optimization_mode, repeat_index, engine in conditions:
+            condition_index += 1
+            write_json(
+                run_dir / "logs" / "progress_status.json",
+                {
+                    "stage": "running_samples",
+                    "condition_index": condition_index,
+                    "total_conditions": total_conditions,
+                    "engine": engine,
+                    "optimization_mode": optimization_mode,
+                    "repeat_index": repeat_index,
+                    "timestamp_utc": utc_now_iso(),
+                },
+            )
+            endpoint_info = endpoint_for_condition(endpoints, engine, optimization_mode)
+            endpoint_url = endpoint_info.url
+            run_samples_for_backend(
+                engine,
+                endpoint_url,
+                all_samples,
+                config,
+                run_dir,
+                optimization_mode=optimization_mode,
+                repeat_index=repeat_index,
+            )
+            write_json(
+                run_dir / "logs" / "progress_status.json",
+                {
+                    "stage": "running_standard_evaluator",
+                    "condition_index": condition_index,
+                    "total_conditions": total_conditions,
+                    "engine": engine,
+                    "optimization_mode": optimization_mode,
+                    "repeat_index": repeat_index,
+                    "timestamp_utc": utc_now_iso(),
+                },
+            )
+            run_standard_evaluator(
+                config=config,
+                run_dir=run_dir,
+                backend=engine,
+                endpoint_url=endpoint_url,
+                optimization_mode=optimization_mode,
+                repeat_index=repeat_index,
+                smoke=smoke,
+            )
+            write_json(
+                run_dir / "logs" / "progress_status.json",
+                {
+                    "stage": "condition_completed",
+                    "condition_index": condition_index,
+                    "total_conditions": total_conditions,
+                    "engine": engine,
+                    "optimization_mode": optimization_mode,
+                    "repeat_index": repeat_index,
+                    "timestamp_utc": utc_now_iso(),
+                },
+            )
 
-        for engine in config.engines:
-            run_aiperf_profile(engine, endpoints[engine].url, config, run_dir, smoke=smoke)
+        for key, info in endpoints.items():
+            profile_name = key.replace(":", "_")
+            run_aiperf_profile(profile_name, info.url, config, run_dir, smoke=smoke)
 
         parsed = build_parsed_table(run_dir)
         graded = grade_outputs(parsed)
@@ -149,13 +166,29 @@ def _run_pipeline(mode: str) -> int:
         summarize_latency(graded, run_dir)
         generate_final_report(config, run_dir, run_id)
 
-        endpoint_manifest = {name: {"name": info.name, "url": info.url, "created": info.created} for name, info in endpoints.items()}
+        endpoint_manifest = {
+            key: {
+                "name": info.name,
+                "url": info.url,
+                "created": info.created,
+                "backend": info.backend,
+                "optimization_mode": info.optimization_mode,
+            }
+            for key, info in endpoints.items()
+        }
         _write_manifest(run_dir, run_id, mode, to_plain_dict(config), "completed", endpoints=endpoint_manifest)
     except Exception as exc:  # noqa: BLE001
         endpoint_manifest = {}
         if endpoints:
             endpoint_manifest = {
-                name: {"name": info.name, "url": info.url, "created": info.created} for name, info in endpoints.items()
+                key: {
+                    "name": info.name,
+                    "url": info.url,
+                    "created": info.created,
+                    "backend": info.backend,
+                    "optimization_mode": info.optimization_mode,
+                }
+                for key, info in endpoints.items()
             }
         _write_manifest(
             run_dir,
@@ -168,7 +201,16 @@ def _run_pipeline(mode: str) -> int:
         )
         raise
     finally:
-        endpoint_manifest = {name: {"name": info.name, "url": info.url, "created": info.created} for name, info in endpoints.items()}
+        endpoint_manifest = {
+            key: {
+                "name": info.name,
+                "url": info.url,
+                "created": info.created,
+                "backend": info.backend,
+                "optimization_mode": info.optimization_mode,
+            }
+            for key, info in endpoints.items()
+        }
         apply_shutdown_mode(config, endpoint_manifest, run_dir)
 
     print(f"Run complete: {run_dir}")
@@ -179,7 +221,16 @@ def _run_shutdown() -> int:
     config = load_config()
     run_id, run_dir = _build_run_dir(config.results_dir, f"{config.run_name}_shutdown")
     endpoints = resolve_endpoints(config, run_id=run_id, run_dir=run_dir)
-    endpoint_manifest = {name: {"name": info.name, "url": info.url, "created": info.created} for name, info in endpoints.items()}
+    endpoint_manifest = {
+        key: {
+            "name": info.name,
+            "url": info.url,
+            "created": info.created,
+            "backend": info.backend,
+            "optimization_mode": info.optimization_mode,
+        }
+        for key, info in endpoints.items()
+    }
     apply_shutdown_mode(config, endpoint_manifest, run_dir)
     _write_manifest(run_dir, run_id, "shutdown", to_plain_dict(config), "completed", endpoints=endpoint_manifest)
     print(f"Shutdown flow complete: {run_dir}")
@@ -187,7 +238,7 @@ def _run_shutdown() -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Black-box vLLM vs SGLang study runner")
+    parser = argparse.ArgumentParser(description="Black-box inference backend study runner")
     parser.add_argument("--mode", choices=["all", "smoke", "shutdown"], default="all")
     args = parser.parse_args()
 

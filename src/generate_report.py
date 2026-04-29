@@ -44,7 +44,8 @@ def generate_final_report(config: AppConfig, run_dir: Path, run_id: str) -> Path
     else:
         for _, row in latency_df.iterrows():
             latency_lines.append(
-                f"- {row['backend']} | {row['workload']} | {row['workload_class']}: "
+                f"- {row['backend']} | {row.get('optimization_mode', 'baseline')} | repeat {int(row.get('repeat_index', 1))} | "
+                f"{row['workload']} | {row['workload_class']}: "
                 f"mean={row['mean_latency_s']:.3f}s, p95={row['p95_latency_s']:.3f}s, success={row['success_rate']:.2%}"
             )
 
@@ -55,6 +56,7 @@ def generate_final_report(config: AppConfig, run_dir: Path, run_id: str) -> Path
         f"- `{run_dir / 'processed/public_per_sample_comparison.csv'}`",
         f"- `{run_dir / 'processed/custom_per_sample_comparison.csv'}`",
         f"- `{run_dir / 'processed/failure_bucket_summary.csv'}`",
+        f"- `{run_dir / 'processed/engine_mode_summary.csv'}`",
         f"- `{run_dir / 'processed/latency_summary.csv'}`",
         f"- `{run_dir / 'case_studies/case_studies.csv'}`",
         f"- `{run_dir / 'case_studies/case_studies.md'}`",
@@ -66,7 +68,7 @@ def generate_final_report(config: AppConfig, run_dir: Path, run_id: str) -> Path
         template.replace(
             "{{TOOL_STACK}}",
             "- LightEval for benchmark-oriented correctness and sample details\n"
-            "- Custom grading and failure bucketing for black-box comparison\n"
+            "- Custom grading, per-engine summaries, and vLLM-vs-SGLang failure bucketing for black-box comparison\n"
             "- AIPerf for request-level performance exports",
         )
         .replace(

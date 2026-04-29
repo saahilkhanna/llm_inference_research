@@ -18,7 +18,7 @@ def generate_tool_selection_memo(config: AppConfig, run_dir: Path) -> Path:
 
 ## 2) Best tool for sample-level outputs and failure analysis
 **Choice:** LightEval + custom pandas post-processing  
-**Why:** LightEval provides detailed per-sample records, while custom analysis enforces project-specific failure buckets (`both_correct`, `both_wrong`, `vllm_correct_sglang_wrong`, etc.) and representative case selection.
+**Why:** LightEval provides detailed per-sample records, while custom analysis enforces project-specific summaries, vLLM-vs-SGLang failure buckets, and representative case selection.
 
 ## 3) Best tool for latency/performance measurement
 **Choice:** AIPerf  
@@ -26,9 +26,9 @@ def generate_tool_selection_memo(config: AppConfig, run_dir: Path) -> Path:
 
 ## 4) Easiest tool with Hugging Face Endpoints
 **Choice:** LightEval and direct HTTP runners  
-**Why:** LightEval has dedicated endpoint support, and direct request runners are simple for identical black-box prompt replay across two endpoints.
+**Why:** LightEval has dedicated endpoint support, and direct request runners are simple for identical black-box prompt replay across configured endpoints.
 
-## 5) Easiest tool with vLLM and SGLang
+## 5) Easiest tool with llama.cpp, vLLM, and SGLang
 **Choice:** HTTP-compatible request runner + LightEval-inspired task formatting  
 **Why:** Using endpoint URLs with the same request schema avoids backend-specific internals and keeps comparison black-box and reproducible.
 

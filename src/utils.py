@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import os
 import platform
+import threading
 import sys
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+_jsonl_append_lock = threading.Lock()
 
 
 def utc_now_iso() -> str:
@@ -39,8 +42,9 @@ def write_json(path: Path, payload: Any) -> None:
 
 def append_jsonl(path: Path, row: dict[str, Any]) -> None:
     ensure_dir(path.parent)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, ensure_ascii=True) + "\n")
+    with _jsonl_append_lock:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, ensure_ascii=True) + "\n")
 
 
 def write_jsonl(path: Path, rows: Iterable[dict[str, Any]]) -> None:

@@ -77,7 +77,11 @@ def select_public_samples(config: AppConfig, run_dir: Path, smoke: bool) -> list
         return []
 
     limit = config.effective_limit(smoke)
-    target_per_task = max(1, limit // max(1, len(config.public_tasks)))
+    public_tasks = config.public_tasks
+    if config.public_task_ids:
+        allowed_task_ids = set(config.public_task_ids)
+        public_tasks = [task for task in public_tasks if task.get("id") in allowed_task_ids]
+    target_per_task = max(1, limit // max(1, len(public_tasks)))
     samples: list[dict[str, Any]] = []
 
     try:
@@ -85,7 +89,7 @@ def select_public_samples(config: AppConfig, run_dir: Path, smoke: bool) -> list
     except Exception:  # noqa: BLE001
         load_dataset = None
 
-    for task in config.public_tasks:
+    for task in public_tasks:
         task_id = task.get("id", "unknown_task")
         dataset_name = task.get("dataset", "")
         subset = task.get("subset") or None

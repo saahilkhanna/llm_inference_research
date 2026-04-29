@@ -1,14 +1,14 @@
-# Black-Box vLLM vs SGLang Failure Study
+# Black-Box Inference Backend Failure Study
 
-This project builds a reproducible, one-command research pipeline to compare **vLLM** and **SGLang** as black-box optimized inference backends.
+This project builds a reproducible, one-command research pipeline to compare **llama.cpp**, **vLLM**, and **SGLang** as black-box inference backends.
 
 It answers:
-1. How vLLM and SGLang differ in performance and failure behavior across public and custom workloads.
+1. How a minimal llama.cpp serving baseline differs from vLLM and SGLang in performance and failure behavior across public and custom workloads.
 2. Whether optimization-oriented inference settings correlate with observable quality failures, especially for long-context and workload-specific prompts.
 
 ## What this project does
 
-- Runs the same cached public and custom prompts against both backends.
+- Runs the same cached public and custom prompts against the configured backends.
 - Saves raw request/response artifacts per sample.
 - Grades outputs conservatively (`correct`, `wrong`, `unknown`).
 - Produces per-sample comparison CSVs and failure buckets:
@@ -24,7 +24,7 @@ It answers:
 
 ## Claim boundaries
 
-We treat vLLM and SGLang as black-box optimized inference backends. Because the experiment uses managed endpoints and request-level logs, we focus on observable behavior rather than low-level GPU internals.
+We treat llama.cpp, vLLM, and SGLang as black-box inference backends. Because the experiment uses managed endpoints and request-level logs, we focus on observable behavior rather than low-level GPU internals.
 
 We do not claim that observed quality differences are definitively caused by KV-cache management, scheduling, or GPU memory behavior. Establishing that requires lower-level instrumentation and controlled ablations.
 
@@ -85,8 +85,10 @@ Set key variables in `.env`:
 - `TARGET_LLM_BASE_URL` (optional single-endpoint alias for manual mode)
 - `CREATE_ENDPOINTS` (recommended `true`)
 - `VLLM_ENDPOINT_URL`, `SGLANG_ENDPOINT_URL` (only required if `CREATE_ENDPOINTS=false`)
+- `LLAMA_CPP_MODEL_ID`, `VLLM_MODEL_ID`, `SGLANG_MODEL_ID` (optional per-engine model repos; llama.cpp should use a GGUF repo)
+- `LLAMA_CPP_ENDPOINT_FRAMEWORK`, `VLLM_ENDPOINT_FRAMEWORK`, `SGLANG_ENDPOINT_FRAMEWORK` (`model.framework`, defaults to `pytorch`)
 - `ENGINES`, `OPTIMIZATION_MODES`, `REPEATS_PER_CONDITION`
-- `LLAMA_CPP_ENDPOINT_URL` (required when `ENGINES` includes `llama_cpp`)
+- `LLAMA_CPP_ENDPOINT_URL` (required for llama.cpp only when `CREATE_ENDPOINTS=false`)
 - `KV_CACHE_QUANT_MODE`, `SPECULATIVE_DRAFT_MODEL`, `SPECULATIVE_NUM_TOKENS`
 - `APPLY_OPTIMIZATION_REQUEST_HINTS` (inject optimization hints into request payloads)
 - `STANDARD_EVAL_ENABLED`, `STANDARD_EVALUATOR`, `STANDARD_EVAL_TASKS`
@@ -99,9 +101,14 @@ Set key variables in `.env`:
 - `RESULTS_DIR`, `RUN_NAME`, `MAX_ESTIMATED_COST_USD`
 
 Endpoint behavior:
-- If `CREATE_ENDPOINTS=true`, `HF_TOKEN` (and optionally `HF_NAMESPACE`) is enough; the pipeline will create/reuse managed endpoints for vLLM and SGLang.
-- If `CREATE_ENDPOINTS=false`, you must provide both `VLLM_ENDPOINT_URL` and `SGLANG_ENDPOINT_URL`.
-- If `TARGET_LLM_BASE_URL` is set and backend-specific URLs are empty, the pipeline uses that URL for both backends and automatically skips endpoint creation.
+- Endpoint resolution is per condition, using keys like `vllm:baseline`, `vllm:kv_cache_quant`, and `sglang:spec_decode`.
+- If `CREATE_ENDPOINTS=true`, the pipeline creates one managed Hugging Face endpoint per missing condition using the lower-level `/v2/endpoint/{namespace}` payload shape.
+- vLLM/SGLang managed endpoints receive condition-specific `model.args` and engine image blocks (`vLLM` / `sGLang`) matching the Hugging Face endpoint configuration model.
+- `llama_cpp` can be either a manual baseline endpoint via `LLAMA_CPP_ENDPOINT_URL` or a managed GGUF endpoint via `LLAMA_CPP_MODEL_ID`.
+- If `CREATE_ENDPOINTS=false`, provide URLs for each configured backend or per-mode vLLM/SGLang URLs for true optimization ablations.
+- If `TARGET_LLM_BASE_URL` is set and vLLM/SGLang URLs are empty, the pipeline uses that URL for vLLM and SGLang and automatically skips endpoint creation.
+- With `ENGINES=llama_cpp,vllm,sglang` and `OPTIMIZATION_MODES=baseline,kv_cache_quant,spec_decode`, the runner uses seven endpoint conditions: one llama.cpp baseline plus three vLLM and three SGLang conditions.
+Configure server-side args with `VLLM_BASELINE_ARGS`, `VLLM_KV_CACHE_QUANT_ARGS`, `VLLM_SPEC_DECODE_ARGS`, `SGLANG_BASELINE_ARGS`, `SGLANG_KV_CACHE_QUANT_ARGS`, and `SGLANG_SPEC_DECODE_ARGS`.
 
 You can change model, benchmark size, workload size, endpoint strategy, and shutdown behavior without editing code.
 
@@ -139,6 +146,7 @@ Each run writes to `results/<RUN_ID>/`:
 - `processed/public_per_sample_comparison.csv`
 - `processed/custom_per_sample_comparison.csv`
 - `processed/failure_bucket_summary.csv`
+- `processed/engine_mode_summary.csv`
 - `processed/latency_summary.csv`
 - `case_studies/case_studies.csv`
 - `case_studies/case_studies.md`
@@ -156,3 +164,4 @@ Each run writes to `results/<RUN_ID>/`:
 - `mixed_unknown`: one side unknown and the other known.
 
 These buckets support black-box failure characterization without overclaiming internal causes.
+`engine_mode_summary.csv` and `latency_summary.csv` include all configured engines, including the llama.cpp baseline.

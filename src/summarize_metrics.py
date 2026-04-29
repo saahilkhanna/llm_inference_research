@@ -14,6 +14,8 @@ def summarize_latency(graded_df: pd.DataFrame, run_dir: Path) -> Path:
         pd.DataFrame(
             columns=[
                 "backend",
+                "optimization_mode",
+                "repeat_index",
                 "workload",
                 "workload_class",
                 "mean_latency_s",
@@ -27,8 +29,13 @@ def summarize_latency(graded_df: pd.DataFrame, run_dir: Path) -> Path:
         return output_path
 
     rows = []
-    grouped = graded_df.groupby(["backend", "workload", "workload_class"], dropna=False)
-    for (backend, workload, workload_class), grp in grouped:
+    df = graded_df.copy()
+    if "optimization_mode" not in df.columns:
+        df["optimization_mode"] = "baseline"
+    if "repeat_index" not in df.columns:
+        df["repeat_index"] = 1
+    grouped = df.groupby(["backend", "optimization_mode", "repeat_index", "workload", "workload_class"], dropna=False)
+    for (backend, optimization_mode, repeat_index, workload, workload_class), grp in grouped:
         latency = grp["latency_seconds"].astype(float)
         token_counts = grp["token_counts"].apply(lambda x: x if isinstance(x, dict) else {})
         total_tokens = token_counts.apply(lambda d: d.get("completion_tokens", 0) or d.get("output_tokens", 0)).sum()
@@ -37,6 +44,8 @@ def summarize_latency(graded_df: pd.DataFrame, run_dir: Path) -> Path:
         rows.append(
             {
                 "backend": backend,
+                "optimization_mode": optimization_mode,
+                "repeat_index": int(repeat_index),
                 "workload": workload,
                 "workload_class": workload_class,
                 "mean_latency_s": float(latency.mean()),

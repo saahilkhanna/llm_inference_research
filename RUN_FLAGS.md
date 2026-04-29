@@ -9,6 +9,12 @@ This guide lists all runtime flags/env variables and practical command patterns 
 RESULTS_DIR=real_results CREATE_ENDPOINTS=false BACKEND_API_STYLE=openai_chat make smoke
 ```
 
+### 1b) GSM8K 7-endpoint smoke
+```bash
+make gsm8k-7-smoke
+```
+Runs all seven endpoint conditions with `LIMIT=1`, `PUBLIC_TASK_IDS=gsm8k_main`, custom workload disabled, standard eval disabled, and AIPerf disabled by default.
+
 ### 2) Full run (manual endpoints)
 ```bash
 RESULTS_DIR=real_results CREATE_ENDPOINTS=false BACKEND_API_STYLE=openai_chat make all
@@ -27,16 +33,24 @@ make online
 ENGINES=llama_cpp,vllm,sglang \
 OPTIMIZATION_MODES=baseline,kv_cache_quant,spec_decode \
 REPEATS_PER_CONDITION=3 \
+LLAMA_CPP_ENDPOINT_URL=http://localhost:8080 \
 RESULTS_DIR=real_results \
 CREATE_ENDPOINTS=false \
 BACKEND_API_STYLE=openai_chat \
 make all
 ```
+`llama_cpp` is treated as the minimal production baseline and only runs `baseline`; vLLM and SGLang run all configured optimization modes.
 
-### 3) Full run (auto-create HF endpoints)
+### 3) Full run (auto-create condition endpoints)
 ```bash
-RESULTS_DIR=real_results CREATE_ENDPOINTS=true make all
+ENGINES=llama_cpp,vllm,sglang \
+OPTIMIZATION_MODES=baseline,kv_cache_quant,spec_decode \
+LLAMA_CPP_MODEL_ID=<gguf-model-repo> \
+RESULTS_DIR=real_results \
+CREATE_ENDPOINTS=true \
+make all
 ```
+This resolves seven condition endpoints: `llama_cpp:baseline`, three vLLM modes, and three SGLang modes. If a condition URL is not supplied, the endpoint manager creates the matching managed endpoint. For llama.cpp managed creation, use a GGUF model repo via `LLAMA_CPP_MODEL_ID`.
 
 ### 4) Endpoint lifecycle only
 ```bash
@@ -73,10 +87,20 @@ Values are loaded from `.env` and can be overridden inline per command.
   - Optional per-mode vLLM URLs. If set, these override `VLLM_ENDPOINT_URL` for that mode.
 - `SGLANG_ENDPOINT_URL_BASELINE`, `SGLANG_ENDPOINT_URL_KV_CACHE_QUANT`, `SGLANG_ENDPOINT_URL_SPEC_DECODE`
   - Optional per-mode SGLang URLs. If set, these override `SGLANG_ENDPOINT_URL` for that mode.
+- `LLAMA_CPP_MODEL_ID`, `VLLM_MODEL_ID`, `SGLANG_MODEL_ID`
+  - Optional per-engine model repositories. For llama.cpp managed endpoints, use a GGUF model repo so Hugging Face selects the llama.cpp engine.
+- `LLAMA_CPP_ENDPOINT_FRAMEWORK`, `VLLM_ENDPOINT_FRAMEWORK`, `SGLANG_ENDPOINT_FRAMEWORK`
+  - `model.framework` value in the lower-level endpoint payload. Defaults to `pytorch`, matching the reference payload.
+  - vLLM/SGLang engine selection is controlled by `model.image.vLLM` / `model.image.sGLang`.
+- `ENDPOINT_ACCELERATOR`, `ENDPOINT_VENDOR`, `ENDPOINT_REGION`, `ENDPOINT_TYPE`, `ENDPOINT_INSTANCE_SIZE`, `ENDPOINT_INSTANCE_TYPE`
+  - Managed endpoint creation settings.
 - `TARGET_LLM_BASE_URL`
-  - Convenience alias. If set while both backend URLs are empty, project uses this single URL for both backends and disables auto-create.
+  - Convenience alias. If set while vLLM/SGLang URLs are empty, project uses this single URL for vLLM and SGLang and disables auto-create.
+- `LLAMA_CPP_ENDPOINT_URL`
+  - URL for a manual llama.cpp control endpoint, usually an OpenAI-compatible llama.cpp server.
+  - Required when `ENGINES` includes `llama_cpp` only if `CREATE_ENDPOINTS=false`.
 - `CREATE_ENDPOINTS`
-  - `true`: create/reuse endpoints via HF APIs.
+  - `true`: create one endpoint per missing condition via HF APIs.
   - `false`: use provided endpoint URLs.
 - `SHUTDOWN_MODE`
   - `pause | delete | scale_to_zero | none`
@@ -88,10 +112,12 @@ Values are loaded from `.env` and can be overridden inline per command.
   - Comma-separated list of engines to evaluate.
   - Supported: `llama_cpp`, `vllm`, `sglang`.
   - Example: `ENGINES=llama_cpp,vllm,sglang`
+  - `llama_cpp` runs as a baseline-only control endpoint; vLLM and SGLang run the configured optimization modes.
 - `OPTIMIZATION_MODES`
   - Comma-separated list of optimization conditions.
   - Supported: `baseline`, `kv_cache_quant`, `spec_decode`.
   - Example: `OPTIMIZATION_MODES=baseline,kv_cache_quant,spec_decode`
+  - With all three engines enabled, this produces seven endpoint conditions: one llama.cpp baseline plus three vLLM and three SGLang conditions.
 - `REPEATS_PER_CONDITION`
   - Integer repeat count per engine x optimization condition.
   - Example: `REPEATS_PER_CONDITION=3`
@@ -111,14 +137,20 @@ Values are loaded from `.env` and can be overridden inline per command.
   - `auto | openai_chat | tgi`
   - Set `openai_chat` for `/v1/chat/completions` style endpoints.
   - Set `tgi` for TGI text-generation style endpoints.
-- `LLAMA_CPP_ENDPOINT_URL`
-  - Endpoint URL for the control group (`llama_cpp`) when enabled.
 - `KV_CACHE_QUANT_MODE`
   - Label/hint value for KV cache quant mode (for example `fp8`, `int4`).
 - `SPECULATIVE_DRAFT_MODEL`
   - Draft model hint string for speculative decoding trials.
 - `SPECULATIVE_NUM_TOKENS`
   - Speculative token count hint.
+- `VLLM_BASELINE_ARGS`, `VLLM_KV_CACHE_QUANT_ARGS`, `VLLM_SPEC_DECODE_ARGS`
+  - Shell-style vLLM server args inserted into the managed endpoint `model.args` field.
+  - Example: `VLLM_KV_CACHE_QUANT_ARGS="--gpu-memory-utilization 0.90 --max-model-len 8096 --kv-cache-dtype fp8"`
+- `SGLANG_BASELINE_ARGS`, `SGLANG_KV_CACHE_QUANT_ARGS`, `SGLANG_SPEC_DECODE_ARGS`
+  - Shell-style SGLang server args inserted into the managed endpoint `model.args` field.
+  - Example: `SGLANG_KV_CACHE_QUANT_ARGS="--trust-remote-code --mem-fraction-static 0.90 --max-total-tokens 8096 --kv-cache-dtype fp8_e5m2"`
+- `LLAMA_CPP_BASELINE_ARGS`
+  - Optional shell-style args for the managed llama.cpp baseline endpoint.
 - `APPLY_OPTIMIZATION_REQUEST_HINTS`
   - `true|false`.
   - If true, optimization hints are inserted into request payloads.
@@ -136,6 +168,9 @@ Values are loaded from `.env` and can be overridden inline per command.
   - If false, evaluator runs only for baseline repeat 1 (cost saver).
 - `STANDARD_EVAL_LIMIT_OVERRIDE`
   - Optional cap for standard evaluator sample count (`0` disables override).
+- `PUBLIC_TASK_IDS`
+  - Optional comma-separated filter over `config/default.yaml` public task IDs.
+  - Example: `PUBLIC_TASK_IDS=gsm8k_main`
 
 ### Workload toggles
 
@@ -212,8 +247,9 @@ Use only for wiring checks, not true backend comparison conclusions.
 Use separate endpoint URLs per optimization mode so each condition is actually different server-side:
 ```bash
 CREATE_ENDPOINTS=false \
-ENGINES=vllm,sglang \
+ENGINES=llama_cpp,vllm,sglang \
 OPTIMIZATION_MODES=baseline,kv_cache_quant,spec_decode \
+LLAMA_CPP_ENDPOINT_URL=http://localhost:8080 \
 VLLM_ENDPOINT_URL_BASELINE=https://... \
 VLLM_ENDPOINT_URL_KV_CACHE_QUANT=https://... \
 VLLM_ENDPOINT_URL_SPEC_DECODE=https://... \
@@ -226,6 +262,7 @@ STANDARD_EVAL_TASKS=gsm8k,hendrycks_math,mbpp \
 STANDARD_EVAL_RUN_ON_ALL_CONDITIONS=true \
 make all
 ```
+The llama.cpp endpoint remains the baseline control in this matrix; only vLLM and SGLang use the per-mode optimization endpoints.
 
 ### Public benchmark focus with stronger online tasks
 ```bash
@@ -245,9 +282,8 @@ make online
 To study silent correctness issues and optimization effects, run separate conditions and compare run folders:
 
 1. `baseline`
-2. `kv_quant`
+2. `kv_cache_quant`
 3. `spec_decode`
-4. `attention_opt`
 
 For each condition:
 - Keep prompts fixed (`LIMIT`, task set, custom workload size).
@@ -258,9 +294,8 @@ For each condition:
 Use `RUN_NAME` per condition:
 ```bash
 RUN_NAME=baseline RESULTS_DIR=real_results make all
-RUN_NAME=kv_quant RESULTS_DIR=real_results make all
+RUN_NAME=kv_cache_quant RESULTS_DIR=real_results make all
 RUN_NAME=spec_decode RESULTS_DIR=real_results make all
-RUN_NAME=attention_opt RESULTS_DIR=real_results make all
 ```
 
 ---

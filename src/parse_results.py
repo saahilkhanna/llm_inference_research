@@ -22,9 +22,10 @@ def _jsonl_to_df(path: Path) -> pd.DataFrame:
 
 
 def build_parsed_table(run_dir: Path) -> pd.DataFrame:
-    df_vllm = _jsonl_to_df(run_dir / "raw" / "responses_vllm.jsonl")
-    df_sglang = _jsonl_to_df(run_dir / "raw" / "responses_sglang.jsonl")
-    merged = pd.concat([df_vllm, df_sglang], ignore_index=True)
+    response_files = sorted((run_dir / "raw").glob("responses_*.jsonl"))
+    frames = [_jsonl_to_df(path) for path in response_files]
+    frames = [frame for frame in frames if not frame.empty]
+    merged = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     if merged.empty:
         return merged
 

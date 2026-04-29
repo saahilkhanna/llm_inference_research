@@ -1,11 +1,11 @@
-# Black-Box vLLM vs SGLang Failure Study
+# Black-Box Inference Backend Failure Study
 
 ## Research Questions
-1. How do vLLM and SGLang differ not only in performance, but in failure behavior across public and custom workloads?
-2. Do inference optimizations introduce quality failures on certain long-context or workload-specific prompts, and can we characterize when vLLM and SGLang fail differently?
+1. How does a minimal llama.cpp baseline differ from vLLM and SGLang in performance and failure behavior across public and custom workloads?
+2. Do inference optimizations introduce quality failures on certain long-context or workload-specific prompts, and can we characterize when optimized backends fail differently?
 
 ## Required Framing
-We treat vLLM and SGLang as black-box optimized inference backends. Because the experiment uses managed endpoints and request-level logs, we focus on observable behavior rather than low-level GPU internals.
+We treat llama.cpp, vLLM, and SGLang as black-box inference backends. Because the experiment uses endpoint-level logs, we focus on observable behavior rather than low-level GPU internals.
 
 ## Tool Stack
 {{TOOL_STACK}}
