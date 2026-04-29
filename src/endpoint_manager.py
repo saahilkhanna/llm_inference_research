@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from huggingface_hub import HfApi, RepoFile
 
 from .config import AppConfig
 from .utils import append_jsonl
+from .utils import write_json
 
 
 def _redact_endpoint_payload_for_logs(payload: dict[str, Any]) -> dict[str, Any]:
@@ -32,6 +34,8 @@ class EndpointInfo:
     name: str
     url: str
     created: bool
+    model_id: str
+    endpoint_args: list[str]
 
 
 def endpoint_key(backend: str, optimization_mode: str) -> str:
@@ -45,7 +49,12 @@ def _endpoint_name(backend: str, optimization_mode: str, run_id: str) -> str:
         "spec_decode": "spec",
     }.get(optimization_mode, optimization_mode)
     base = f"{backend}-{mode_tag}-{run_id}".lower().replace("_", "-")
-    return base[:50]
+    # HF endpoint names must be lowercase alnum/hyphen and start/end alnum.
+    sanitized = re.sub(r"[^a-z0-9-]+", "-", base)
+    truncated = sanitized[:50].strip("-")
+    if len(truncated) < 4:
+        truncated = f"{backend[:3]}-{mode_tag}"[:50].strip("-")
+    return truncated
 
 
 def _manual_endpoint_url(config: AppConfig, backend: str, optimization_mode: str) -> str:
@@ -317,6 +326,8 @@ def create_endpoint_if_needed(
             name=f"manual-{backend}-{optimization_mode}",
             url=existing_url,
             created=False,
+            model_id=_endpoint_model_id(config, backend),
+            endpoint_args=config.endpoint_args_for(backend, optimization_mode),
         )
 
     if not config.create_endpoints:
@@ -375,6 +386,8 @@ def create_endpoint_if_needed(
         name=name,
         url=endpoint_url,
         created=True,
+        model_id=payload["model"]["repository"],
+        endpoint_args=payload["model"].get("args", []),
     )
 
 
@@ -412,6 +425,26 @@ def resolve_endpoints(
         for backend, optimization_mode in tasks:
             info = _create(backend, optimization_mode)
             endpoints[info.key] = info
+
+    verification = {
+        "total_conditions": len(tasks),
+        "parallel_provisioning_enabled": bool(config.provision_endpoints_parallel),
+        "conditions": [
+            {
+                "key": key,
+                "backend": info.backend,
+                "optimization_mode": info.optimization_mode,
+                "name": info.name,
+                "url": info.url,
+                "created": info.created,
+                "model_id": info.model_id,
+                "endpoint_args": info.endpoint_args,
+            }
+            for key, info in sorted(endpoints.items(), key=lambda item: item[0])
+        ],
+    }
+    write_json(run_dir / "logs" / "endpoint_resolution.json", verification)
+    append_jsonl(logs_path, {"event": "endpoint_resolution_written", "path": str(run_dir / "logs" / "endpoint_resolution.json")})
     return endpoints
 
 

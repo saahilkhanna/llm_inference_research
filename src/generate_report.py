@@ -24,6 +24,7 @@ def generate_final_report(config: AppConfig, run_dir: Path, run_id: str) -> Path
 
     failure_df = _safe_read_csv(run_dir / "processed" / "failure_bucket_summary.csv")
     latency_df = _safe_read_csv(run_dir / "processed" / "latency_summary.csv")
+    graded_df = _safe_read_csv(run_dir / "processed" / "all_samples_graded.csv")
     public_cmp = _safe_read_csv(run_dir / "processed" / "public_per_sample_comparison.csv")
     custom_cmp = _safe_read_csv(run_dir / "processed" / "custom_per_sample_comparison.csv")
     cases_md = (run_dir / "case_studies" / "case_studies.md")
@@ -36,6 +37,20 @@ def generate_final_report(config: AppConfig, run_dir: Path, run_id: str) -> Path
             continue
         buckets = df["bucket"].value_counts().to_dict()
         correctness_lines.append(f"- {label}: {buckets}")
+    if not graded_df.empty and "benchmark_valid_for_claims" in graded_df.columns:
+        benchmark_rows = int(graded_df["benchmark_valid_for_claims"].fillna(False).astype(bool).sum())
+        diagnostic_rows = int(len(graded_df) - benchmark_rows)
+        correctness_lines.append(
+            f"- Benchmark-valid graded rows: {benchmark_rows}; diagnostic-only rows (excluded from benchmark claims): {diagnostic_rows}"
+        )
+        coding_diag = graded_df[
+            graded_df["task_id"].astype(str).str.startswith("humaneval")
+            & ~graded_df["benchmark_valid_for_claims"].fillna(False).astype(bool)
+        ]
+        if not coding_diag.empty:
+            correctness_lines.append(
+                "- HumanEval prompt-level contains checks are diagnostic only; benchmark coding claims should come from lm-eval test execution."
+            )
 
     failure_lines = ["- " + f"{row['bucket']}: {int(row['count'])}" for _, row in failure_df.iterrows()] if not failure_df.empty else ["- No failure bucket summary available"]
     latency_lines = []

@@ -25,7 +25,7 @@ Llama.cpp is only evaluated at **`baseline`**; vLLM and SGLang are evaluated at 
 | **Managed** (`CREATE_ENDPOINTS=true`) | `HF_TOKEN`, `HF_NAMESPACE`, model IDs, endpoint hardware env vars (`ENDPOINT_*`, engine images, args). No per-condition URLs required. | Let the pipeline create/update endpoints and discover URLs automatically. |
 | **Manual** (`CREATE_ENDPOINTS=false`) | Base URLs (`VLLM_ENDPOINT_URL`, `SGLANG_ENDPOINT_URL`, optionally per-mode overrides like `VLLM_ENDPOINT_URL_KV_CACHE_QUANT`, `LLAMA_CPP_ENDPOINT_URL`, etc.). | All servers already running; compare fixed deployments. |
 
-With managed endpoints you do **not** paste seven URLs: the resolver holds one URL per `(engine, optimization_mode)` after creation.
+With managed endpoints you do **not** paste seven URLs: the resolver holds one URL per `(engine, optimization_mode)` after creation. When `RUN_BACKENDS_SEQUENTIALLY=false`, these conditions can be executed concurrently.
 
 ## 3. CLI modes
 
@@ -50,9 +50,9 @@ make smoke
 make all
 # Equivalent: bash scripts/run_all.sh
 
-# GSM8k public task, smoke-sized limits, all engines and three optimization modes (seven endpoint conditions); creates managed endpoints unless disabled
-make gsm8k-7-smoke
-# Equivalent: bash scripts/run_gsm8k_7_endpoint_smoke.sh
+# Staged backend sequence (llama_cpp baseline -> vllm modes -> sglang modes)
+make staged-backends
+# Equivalent: bash scripts/run_backend_staged_sequence.sh
 
 # Apply shutdown policy to endpoints (pause is common)
 make shutdown
@@ -88,4 +88,14 @@ Each run creates a subdirectory under **`RESULTS_DIR`** (default `results` or ov
 
 ## 7. Cost and safety habits
 
-Run **`make smoke`** or **`make gsm8k-7-smoke`** before expensive full grids. Prefer **`SHUTDOWN_MODE=pause`** after runs so GPUs do not sit billing (see **`SHUTDOWN_MODE`** in `RUN_FLAGS.md`). **`MAX_ESTIMATED_COST_USD`** appears in manifests for bookkeeping; tighten it intentionally if your workflow uses it as a reminder. Review `RUN_FLAGS.md` for parallel provisioning and endpoint tuning.
+Run **`make smoke`** before expensive full grids. For full controlled experiments, prefer **`make staged-backends`** to isolate failures by backend and cap live endpoint count. Prefer **`SHUTDOWN_MODE=pause`** after runs so GPUs do not sit billing (see **`SHUTDOWN_MODE`** in `RUN_FLAGS.md`). **`MAX_ESTIMATED_COST_USD`** appears in manifests for bookkeeping; tighten it intentionally if your workflow uses it as a reminder. Review `RUN_FLAGS.md` for endpoint tuning.
+
+## 8. Integrity hard gates
+
+The pipeline fails fast when benchmark integrity is compromised. Current hard gates include:
+- tiny non-smoke limits,
+- prompt leakage of expected answers in strict grading modes,
+- missing expected answers for gradeable samples,
+- sample-ID mismatch across conditions,
+- missing/failed evaluator conditions when standard eval is enabled.
+- staged sequence cost/runtime guardrails with explicit per-stage audit logs.

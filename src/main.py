@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import threading
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from .benchmark_selection import select_public_samples
@@ -11,6 +13,7 @@ from .custom_workload import build_custom_workload
 from .endpoint_manager import EndpointInfo, apply_shutdown_mode, endpoint_for_condition, resolve_endpoints
 from .generate_report import generate_final_report
 from .grade_outputs import grade_outputs
+from .integrity_checks import validate_post_run_integrity, validate_pre_run_integrity
 from .parse_results import build_parsed_table
 from .performance_runner import run_aiperf_profile
 from .public_eval_runner import run_samples_for_backend
@@ -18,7 +21,7 @@ from .select_case_studies import select_case_studies
 from .summarize_metrics import summarize_latency
 from .standard_evaluator import run_standard_evaluator
 from .tool_selection import generate_tool_selection_memo
-from .utils import build_run_id, ensure_dir, system_manifest, to_plain_dict, utc_now_iso, write_json
+from .utils import append_jsonl, build_run_id, ensure_dir, system_manifest, to_plain_dict, utc_now_iso, write_json
 
 
 def _redact_config(config_dict: dict) -> dict:
@@ -76,6 +79,7 @@ def _run_pipeline(mode: str) -> int:
         all_samples = public_samples + custom_samples
         if not all_samples:
             raise RuntimeError("No samples were selected. Enable at least one workload.")
+        validate_pre_run_integrity(config=config, run_dir=run_dir, samples=all_samples, smoke=smoke)
 
         optimization_modes = ["baseline"] if smoke else config.optimization_modes
         repeats = 1 if smoke else config.repeats_per_condition
@@ -92,22 +96,38 @@ def _run_pipeline(mode: str) -> int:
                     conditions.append((optimization_mode, repeat_index, engine))
 
         total_conditions = len(conditions)
-        condition_index = 0
+        progress_lock = threading.Lock()
+        progress_log = run_dir / "logs" / "condition_progress.jsonl"
 
-        for optimization_mode, repeat_index, engine in conditions:
-            condition_index += 1
-            write_json(
-                run_dir / "logs" / "progress_status.json",
-                {
-                    "stage": "running_samples",
-                    "condition_index": condition_index,
-                    "total_conditions": total_conditions,
-                    "engine": engine,
-                    "optimization_mode": optimization_mode,
-                    "repeat_index": repeat_index,
-                    "timestamp_utc": utc_now_iso(),
-                },
-            )
+        indexed_conditions = [
+            {
+                "condition_index": idx,
+                "optimization_mode": optimization_mode,
+                "repeat_index": repeat_index,
+                "engine": engine,
+            }
+            for idx, (optimization_mode, repeat_index, engine) in enumerate(conditions, start=1)
+        ]
+
+        def _progress_event(stage: str, condition: dict[str, int | str]) -> None:
+            payload = {
+                "stage": stage,
+                "condition_index": condition["condition_index"],
+                "total_conditions": total_conditions,
+                "engine": condition["engine"],
+                "optimization_mode": condition["optimization_mode"],
+                "repeat_index": condition["repeat_index"],
+                "timestamp_utc": utc_now_iso(),
+            }
+            with progress_lock:
+                append_jsonl(progress_log, payload)
+                write_json(run_dir / "logs" / "progress_status.json", payload)
+
+        def _run_condition(condition: dict[str, int | str]) -> dict[str, int | str]:
+            optimization_mode = str(condition["optimization_mode"])
+            repeat_index = int(condition["repeat_index"])
+            engine = str(condition["engine"])
+            _progress_event("running_samples", condition)
             endpoint_info = endpoint_for_condition(endpoints, engine, optimization_mode)
             endpoint_url = endpoint_info.url
             run_samples_for_backend(
@@ -119,18 +139,7 @@ def _run_pipeline(mode: str) -> int:
                 optimization_mode=optimization_mode,
                 repeat_index=repeat_index,
             )
-            write_json(
-                run_dir / "logs" / "progress_status.json",
-                {
-                    "stage": "running_standard_evaluator",
-                    "condition_index": condition_index,
-                    "total_conditions": total_conditions,
-                    "engine": engine,
-                    "optimization_mode": optimization_mode,
-                    "repeat_index": repeat_index,
-                    "timestamp_utc": utc_now_iso(),
-                },
-            )
+            _progress_event("running_standard_evaluator", condition)
             run_standard_evaluator(
                 config=config,
                 run_dir=run_dir,
@@ -140,18 +149,18 @@ def _run_pipeline(mode: str) -> int:
                 repeat_index=repeat_index,
                 smoke=smoke,
             )
-            write_json(
-                run_dir / "logs" / "progress_status.json",
-                {
-                    "stage": "condition_completed",
-                    "condition_index": condition_index,
-                    "total_conditions": total_conditions,
-                    "engine": engine,
-                    "optimization_mode": optimization_mode,
-                    "repeat_index": repeat_index,
-                    "timestamp_utc": utc_now_iso(),
-                },
-            )
+            _progress_event("condition_completed", condition)
+            return condition
+
+        if config.run_backends_sequentially:
+            for condition in indexed_conditions:
+                _run_condition(condition)
+        else:
+            max_workers = min(len(indexed_conditions), 16)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(_run_condition, condition) for condition in indexed_conditions]
+                for future in as_completed(futures):
+                    future.result()
 
         for key, info in endpoints.items():
             profile_name = key.replace(":", "_")
@@ -161,6 +170,7 @@ def _run_pipeline(mode: str) -> int:
         graded = grade_outputs(parsed)
         if not graded.empty:
             graded.to_csv(run_dir / "processed" / "all_samples_graded.csv", index=False)
+        validate_post_run_integrity(config=config, run_dir=run_dir, graded=graded, conditions=conditions)
         compare_backends(graded, run_dir)
         select_case_studies(run_dir, per_bucket=int(config.analysis.get("case_studies_per_bucket", 3)))
         summarize_latency(graded, run_dir)
@@ -173,6 +183,8 @@ def _run_pipeline(mode: str) -> int:
                 "created": info.created,
                 "backend": info.backend,
                 "optimization_mode": info.optimization_mode,
+                "model_id": info.model_id,
+                "endpoint_args": info.endpoint_args,
             }
             for key, info in endpoints.items()
         }
@@ -187,6 +199,8 @@ def _run_pipeline(mode: str) -> int:
                     "created": info.created,
                     "backend": info.backend,
                     "optimization_mode": info.optimization_mode,
+                    "model_id": info.model_id,
+                    "endpoint_args": info.endpoint_args,
                 }
                 for key, info in endpoints.items()
             }
@@ -208,6 +222,8 @@ def _run_pipeline(mode: str) -> int:
                 "created": info.created,
                 "backend": info.backend,
                 "optimization_mode": info.optimization_mode,
+                "model_id": info.model_id,
+                "endpoint_args": info.endpoint_args,
             }
             for key, info in endpoints.items()
         }
@@ -228,6 +244,8 @@ def _run_shutdown() -> int:
             "created": info.created,
             "backend": info.backend,
             "optimization_mode": info.optimization_mode,
+            "model_id": info.model_id,
+            "endpoint_args": info.endpoint_args,
         }
         for key, info in endpoints.items()
     }

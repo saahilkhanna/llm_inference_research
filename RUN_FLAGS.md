@@ -9,11 +9,11 @@ This guide lists all runtime flags/env variables and practical command patterns 
 RESULTS_DIR=real_results CREATE_ENDPOINTS=false BACKEND_API_STYLE=openai_chat make smoke
 ```
 
-### 1b) GSM8K 7-endpoint smoke
+### 1b) Backend-staged sequence (recommended)
 ```bash
-make gsm8k-7-smoke
+make staged-backends
 ```
-Runs all seven endpoint conditions with `LIMIT=1`, `PUBLIC_TASK_IDS=gsm8k_main`, custom workload disabled, standard eval disabled, and AIPerf disabled by default.
+Runs the current backend-by-backend flow: `llama_cpp` baseline first, then `vllm` (all modes), then `sglang` (all modes). Each stage runs integrity checks and updates final summary/data-collection outputs.
 
 ### 2) Full run (manual endpoints)
 ```bash
@@ -122,7 +122,9 @@ Values are loaded from `.env` and can be overridden inline per command.
   - Integer repeat count per engine x optimization condition.
   - Example: `REPEATS_PER_CONDITION=3`
 - `RUN_BACKENDS_SEQUENTIALLY`
-  - Keep `true` for predictable billing and cleaner logs.
+  - `true` runs condition jobs one-by-one.
+  - `false` runs condition jobs concurrently (one worker per condition, capped).
+  - Use `false` when you intentionally provision multiple condition endpoints in parallel and want faster wall-clock execution.
 - `LIMIT`
   - Full-run sample cap.
 - `SMOKE_LIMIT`
@@ -168,6 +170,7 @@ Values are loaded from `.env` and can be overridden inline per command.
   - If false, evaluator runs only for baseline repeat 1 (cost saver).
 - `STANDARD_EVAL_LIMIT_OVERRIDE`
   - Optional cap for standard evaluator sample count (`0` disables override).
+  - Integrity gates reject tiny non-smoke limits to avoid muddied benchmark conclusions.
 - `PUBLIC_TASK_IDS`
   - Optional comma-separated filter over `config/default.yaml` public task IDs.
   - Example: `PUBLIC_TASK_IDS=gsm8k_main`

@@ -214,6 +214,25 @@ class AppConfig:
             return by_mode.get(optimization_mode, self.sglang_args_baseline)
         return []
 
+    def endpoint_url_for_mode(self, backend: str, optimization_mode: str) -> str:
+        if backend == "vllm":
+            by_mode = {
+                "baseline": self.vllm_endpoint_url_baseline,
+                "kv_cache_quant": self.vllm_endpoint_url_kv_cache_quant,
+                "spec_decode": self.vllm_endpoint_url_spec_decode,
+            }
+            return by_mode.get(optimization_mode, "") or self.vllm_endpoint_url
+        if backend == "sglang":
+            by_mode = {
+                "baseline": self.sglang_endpoint_url_baseline,
+                "kv_cache_quant": self.sglang_endpoint_url_kv_cache_quant,
+                "spec_decode": self.sglang_endpoint_url_spec_decode,
+            }
+            return by_mode.get(optimization_mode, "") or self.sglang_endpoint_url
+        if backend == "llama_cpp":
+            return self.llama_cpp_endpoint_url if optimization_mode == "baseline" else ""
+        return ""
+
     def validate(self) -> None:
         allowed_engines = {"llama_cpp", "vllm", "sglang"}
         if not self.engines:
@@ -259,6 +278,30 @@ class AppConfig:
                 raise ValueError("Set VLLM_ENDPOINT_URL when running vllm in manual mode.")
             if "sglang" in self.engines and not has_any_sglang_url:
                 raise ValueError("Set SGLANG_ENDPOINT_URL when running sglang in manual mode.")
+            # Integrity guard: with optimization experiments in manual mode, require explicit
+            # per-mode endpoint URLs so each condition maps to an intentionally configured server.
+            for backend in ("vllm", "sglang"):
+                if backend not in self.engines:
+                    continue
+                active_modes = [m for m in self.optimization_modes if backend != "llama_cpp" or m == "baseline"]
+                if len(active_modes) <= 1:
+                    continue
+                resolved_urls = []
+                for mode in active_modes:
+                    url = self.endpoint_url_for_mode(backend, mode).strip()
+                    if not url:
+                        raise ValueError(
+                            f"Manual mode requires explicit {backend} endpoint URL for optimization mode '{mode}'. "
+                            f"Set {backend.upper()}_ENDPOINT_URL_{mode.upper()}."
+                        )
+                    resolved_urls.append((mode, url))
+                unique_urls = {u for _, u in resolved_urls}
+                if len(unique_urls) != len(resolved_urls):
+                    pairs = ", ".join([f"{m}={u}" for m, u in resolved_urls])
+                    raise ValueError(
+                        f"Manual mode requires distinct {backend} endpoint URLs per optimization mode. "
+                        f"Resolved mappings: {pairs}"
+                    )
         if (
             "llama_cpp" in self.engines
             and not self.llama_cpp_endpoint_url

@@ -86,6 +86,8 @@ def run_standard_evaluator(
         "--output_path",
         str(out_dir),
     ]
+    if any("humaneval" in str(t).lower() for t in config.standard_eval_tasks):
+        cmd.append("--confirm_run_unsafe_code")
 
     append_jsonl(
         logs,
@@ -104,6 +106,12 @@ def run_standard_evaluator(
         if config.hf_token:
             # local-chat-completions reads OPENAI_API_KEY from env.
             env["OPENAI_API_KEY"] = config.hf_token
+            # Ensure HF Hub-backed task assets can authenticate when needed.
+            env["HF_TOKEN"] = config.hf_token
+            env["HUGGINGFACEHUB_API_TOKEN"] = config.hf_token
+        # Humaneval relies on execute-on-generated-code metric; lm-eval requires explicit opt-in.
+        if any("humaneval" in str(t).lower() for t in config.standard_eval_tasks):
+            env["HF_ALLOW_CODE_EVAL"] = "1"
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
         append_jsonl(
             logs,
@@ -113,13 +121,23 @@ def run_standard_evaluator(
                 "preview": (result.stdout or "")[:1000],
             },
         )
-        append_jsonl(logs, {"event": "lm_eval_completed", "backend": backend, "output_path": str(out_dir)})
+        append_jsonl(
+            logs,
+            {
+                "event": "lm_eval_completed",
+                "backend": backend,
+                "optimization_mode": optimization_mode,
+                "repeat_index": repeat_index,
+                "tasks": config.standard_eval_tasks,
+                "output_path": str(out_dir),
+            },
+        )
     except Exception as exc:  # noqa: BLE001
         stderr_preview = ""
         stdout_preview = ""
         if isinstance(exc, subprocess.CalledProcessError):
-            stderr_preview = (exc.stderr or "")[:2000]
-            stdout_preview = (exc.stdout or "")[:2000]
+            stderr_preview = (exc.stderr or "")[:20000]
+            stdout_preview = (exc.stdout or "")[:20000]
         append_jsonl(
             logs,
             {

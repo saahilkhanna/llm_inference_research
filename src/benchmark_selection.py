@@ -185,7 +185,7 @@ def select_public_samples(config: AppConfig, run_dir: Path, smoke: bool) -> list
                             "workload_class": workload_class,
                             "prompt": _build_humaneval_prompt(row["prompt"]),
                             "expected_answer": expected,
-                            "grading_type": grading,
+                            "grading_type": "contains_diagnostic",
                             "source": dataset_name,
                         }
                     )
@@ -199,7 +199,7 @@ def select_public_samples(config: AppConfig, run_dir: Path, smoke: bool) -> list
                             "workload_class": "medium",
                             "prompt": _build_humaneval_prompt("def add(a, b):\n    \"\"\"Return sum of two numbers.\"\"\"\n"),
                             "expected_answer": "add",
-                            "grading_type": "contains",
+                            "grading_type": "contains_diagnostic",
                             "source": "fallback-public-style",
                         }
                     )
