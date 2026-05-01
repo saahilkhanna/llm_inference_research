@@ -88,7 +88,7 @@ def generate_final_report(config: AppConfig, run_dir: Path, run_id: str) -> Path
         )
         .replace(
             "{{WORKLOADS}}",
-            "- Public: HumanEval-style coding prompts, GSM8K, competition math, and a long-context public-style slice\n"
+            "- Public: HumanEval-style coding prompts, GSM8K, competition math, and LongBench-v2 MCQ (length-capped sampling)\n"
             "- Custom: mixed short/medium/long Edge-IoT data-analysis prompts\n"
             "- Related motivation: silent correctness issues in optimized inference systems (MDPI basis provided by user).",
         )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import random
 import re
 from pathlib import Path
@@ -48,7 +49,56 @@ def _build_humaneval_prompt(prompt: str) -> str:
     )
 
 
-def _make_long_context_public_style(idx: int) -> dict[str, Any]:
+def _build_longbench_v2_prompt(
+    context: str,
+    question: str,
+    choice_a: str,
+    choice_b: str,
+    choice_c: str,
+    choice_d: str,
+) -> str:
+    return (
+        "Read the long context below, then answer the multiple-choice question. "
+        "Reply with only one letter: A, B, C, or D.\n\n"
+        f"Context:\n{context}\n\n"
+        f"Question: {question}\n\n"
+        f"A. {choice_a}\n"
+        f"B. {choice_b}\n"
+        f"C. {choice_c}\n"
+        f"D. {choice_d}\n\n"
+        "Answer:"
+    )
+
+
+def _longbench_v2_sample_indices(ds: Any, need: int, max_context_chars: int, seed: int, truncate_keep: int) -> list[int]:
+    eligible: list[int] = []
+    for i in range(len(ds)):
+        ctx = str(ds[i]["context"])
+        eff = _effective_longbench_context(ctx, truncate_keep)
+        if len(eff) <= max_context_chars:
+            eligible.append(i)
+    if len(eligible) < need:
+        raise ValueError(
+            f"LongBench-v2: only {len(eligible)} rows fit after truncation (keep={truncate_keep}) "
+            f"and max_context_chars={max_context_chars}; need {need}. "
+            "Raise LONGBENCH_TRUNCATE_CONTEXT_CHARS or LONGBENCH_MAX_CONTEXT_CHARS, or lower LIMIT."
+        )
+    rng = random.Random(seed)
+    rng.shuffle(eligible)
+    return eligible[:need]
+
+
+def _effective_longbench_context(raw: str, truncate_keep: int) -> str:
+    """Optionally shrink context so prompts fit smaller GPU context windows (e.g. 8k-token L4)."""
+    s = str(raw)
+    if truncate_keep > 0 and len(s) > truncate_keep:
+        return (
+            "[Earlier context omitted — last segment only, for hardware limits.]\n\n" + s[-truncate_keep:]
+        )
+    return s
+
+
+def _make_long_context_public_style(task_id: str, idx: int) -> dict[str, Any]:
     random.seed(idx)
     needle = f"sensor-{idx:04d}"
     value = f"{7000 + idx}"
@@ -61,9 +111,9 @@ def _make_long_context_public_style(idx: int) -> dict[str, Any]:
         f"{needle}? Return only the numeric code."
     )
     return {
-        "sample_id": f"public_long_context_{idx}",
+        "sample_id": f"{task_id}_{idx}",
         "workload": "public",
-        "task_id": "public_long_context_slice",
+        "task_id": task_id,
         "workload_class": "long",
         "prompt": prompt,
         "expected_answer": value,
@@ -241,9 +291,52 @@ def select_public_samples(config: AppConfig, run_dir: Path, smoke: bool) -> list
                     )
             continue
 
-        # Keep long-context slice practical and deterministic.
-        for i in range(target_per_task):
-            samples.append(_make_long_context_public_style(i))
+        if task_id.startswith("longbench"):
+            try:
+                if load_dataset is None:
+                    raise RuntimeError("datasets package unavailable")
+                ds = load_dataset(dataset_name, subset, split=split)
+                max_chars = int(os.getenv("LONGBENCH_MAX_CONTEXT_CHARS", "120000"))
+                truncate_keep = int(os.getenv("LONGBENCH_TRUNCATE_CONTEXT_CHARS", "0"))
+                seed = int(os.getenv("LONGBENCH_SELECTION_SEED", "42"))
+                take = min(target_per_task, len(ds))
+                pick = _longbench_v2_sample_indices(ds, take, max_chars, seed, truncate_keep)
+                for i in pick:
+                    row = ds[i]
+                    safe_id = str(row["_id"]).replace("/", "_").replace("\\", "_")
+                    ans = str(row["answer"]).strip().upper()
+                    if ans not in {"A", "B", "C", "D"}:
+                        ans = ans[:1].upper()
+                    ctx_used = _effective_longbench_context(str(row["context"]), truncate_keep)
+                    samples.append(
+                        {
+                            "sample_id": f"{task_id}_{safe_id}",
+                            "workload": "public",
+                            "task_id": task_id,
+                            "workload_class": workload_class,
+                            "prompt": _build_longbench_v2_prompt(
+                                ctx_used,
+                                str(row["question"]),
+                                str(row["choice_A"]),
+                                str(row["choice_B"]),
+                                str(row["choice_C"]),
+                                str(row["choice_D"]),
+                            ),
+                            "expected_answer": ans[:1],
+                            "grading_type": grading,
+                            "source": dataset_name,
+                        }
+                    )
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(
+                    f"LongBench task {task_id!r}: failed to load dataset {dataset_name!r} "
+                    "(check HF access and datasets package)." 
+                ) from exc
+            continue
+
+        # Fallback for unknown benchmark ids: deterministic synthetic needle.
+        for fallback_i in range(target_per_task):
+            samples.append(_make_long_context_public_style(task_id, fallback_i))
 
     samples = samples[:limit]
     output_path = run_dir / "raw" / "public_samples.jsonl"

@@ -331,6 +331,16 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
         with defaults_file.open("r", encoding="utf-8") as handle:
             defaults = yaml.safe_load(handle) or {}
 
+    lc_max_raw = os.getenv("LONG_CONTEXT_MAX_SEQ_LEN", "").strip()
+    default_max_model_len = str(_to_int(lc_max_raw, 8096) if lc_max_raw else 8096)
+    llama_ctx_env = os.getenv("LLAMA_CPP_CTX_SIZE", "").strip()
+    if llama_ctx_env:
+        llama_cpp_ctx_size_val = _to_int(os.getenv("LLAMA_CPP_CTX_SIZE"), 8096)
+    elif lc_max_raw:
+        llama_cpp_ctx_size_val = _to_int(lc_max_raw, 16384)
+    else:
+        llama_cpp_ctx_size_val = 8096
+
     target_llm_base_url = os.getenv("TARGET_LLM_BASE_URL", "").strip()
     vllm_url = os.getenv("VLLM_ENDPOINT_URL", "").strip()
     sglang_url = os.getenv("SGLANG_ENDPOINT_URL", "").strip()
@@ -375,7 +385,7 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
         llama_cpp_engine_port=_to_int(os.getenv("LLAMA_CPP_ENGINE_PORT"), 8080),
         llama_cpp_engine_health_route=os.getenv("LLAMA_CPP_ENGINE_HEALTH_ROUTE", "/health"),
         llama_cpp_gguf_filename=os.getenv("LLAMA_CPP_GGUF_FILENAME", "").strip(),
-        llama_cpp_ctx_size=_to_int(os.getenv("LLAMA_CPP_CTX_SIZE"), 8096),
+        llama_cpp_ctx_size=llama_cpp_ctx_size_val,
         llama_cpp_n_parallel=_to_int(os.getenv("LLAMA_CPP_N_PARALLEL"), 1),
         llama_cpp_threads_http=_to_int(os.getenv("LLAMA_CPP_THREADS_HTTP"), 64),
         llama_cpp_n_gpu_layers=(
@@ -413,7 +423,7 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
         llama_cpp_args_baseline=_to_args(os.getenv("LLAMA_CPP_BASELINE_ARGS"), []),
         vllm_args_baseline=_to_args(
             os.getenv("VLLM_BASELINE_ARGS"),
-            ["--gpu-memory-utilization", "0.90", "--max-model-len", "8096"],
+            ["--gpu-memory-utilization", "0.90", "--max-model-len", default_max_model_len],
         ),
         vllm_args_kv_cache_quant=_to_args(
             os.getenv("VLLM_KV_CACHE_QUANT_ARGS"),
@@ -421,7 +431,7 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
                 "--gpu-memory-utilization",
                 "0.90",
                 "--max-model-len",
-                "8096",
+                default_max_model_len,
                 "--kv-cache-dtype",
                 os.getenv("KV_CACHE_QUANT_MODE", "fp8"),
             ],
@@ -429,7 +439,7 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
         vllm_args_spec_decode=_to_args(
             os.getenv("VLLM_SPEC_DECODE_ARGS"),
             _vllm_spec_decode_args(
-                ["--gpu-memory-utilization", "0.90", "--max-model-len", "8096"],
+                ["--gpu-memory-utilization", "0.90", "--max-model-len", default_max_model_len],
                 os.getenv("SPECULATIVE_DRAFT_MODEL", "").strip()
                 or _env_or(
                     "SPECULATIVE_DRAFT_MODEL_DEFAULT",
@@ -440,7 +450,13 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
         ),
         sglang_args_baseline=_to_args(
             os.getenv("SGLANG_BASELINE_ARGS"),
-            ["--trust-remote-code", "--mem-fraction-static", "0.90", "--max-total-tokens", "8096"],
+            [
+                "--trust-remote-code",
+                "--mem-fraction-static",
+                "0.90",
+                "--max-total-tokens",
+                default_max_model_len,
+            ],
         ),
         sglang_args_kv_cache_quant=_to_args(
             os.getenv("SGLANG_KV_CACHE_QUANT_ARGS"),
@@ -449,7 +465,7 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
                 "--mem-fraction-static",
                 "0.90",
                 "--max-total-tokens",
-                "8096",
+                default_max_model_len,
                 "--kv-cache-dtype",
                 _sglang_kv_cache_dtype_for_launcher(),
             ],
@@ -457,7 +473,13 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
         sglang_args_spec_decode=_to_args(
             os.getenv("SGLANG_SPEC_DECODE_ARGS"),
             _sglang_spec_decode_args(
-                ["--trust-remote-code", "--mem-fraction-static", "0.90", "--max-total-tokens", "8096"],
+                [
+                    "--trust-remote-code",
+                    "--mem-fraction-static",
+                    "0.90",
+                    "--max-total-tokens",
+                    default_max_model_len,
+                ],
                 os.getenv("SPECULATIVE_DRAFT_MODEL", "").strip()
                 or _env_or(
                     "SPECULATIVE_DRAFT_MODEL_DEFAULT",

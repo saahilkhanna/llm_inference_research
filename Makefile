@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: setup smoke staged-backends single-workload reaggregate-overlap discrepancy-report optimization-regression-report data-collection all online shutdown clean
+.PHONY: setup smoke staged-backends single-workload single-workload-longbench reaggregate-overlap discrepancy-report optimization-regression-report data-collection all online shutdown clean
 
 setup:
 	bash scripts/setup_env.sh
@@ -13,6 +13,9 @@ staged-backends:
 
 single-workload:
 	bash scripts/run_single_workload_gsm8k.sh
+
+single-workload-longbench:
+	bash scripts/run_single_workload_longbench.sh
 
 reaggregate-overlap:
 	source .venv/bin/activate && python scripts/reaggregate_overlap_samples.py

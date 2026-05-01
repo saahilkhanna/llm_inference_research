@@ -1,0 +1,10 @@
+stage,condition_index,total_conditions,engine,optimization_mode,repeat_index,timestamp_utc,run_id
+running_samples,1,7,llama_cpp,baseline,1,2026-04-29T23:04:34+00:00,20260429T230230Z_black_box_vllm_sglang
+running_samples,2,7,vllm,baseline,1,2026-04-29T23:04:34+00:00,20260429T230230Z_black_box_vllm_sglang
+running_samples,3,7,vllm,kv_cache_quant,1,2026-04-29T23:04:34+00:00,20260429T230230Z_black_box_vllm_sglang
+running_samples,4,7,vllm,spec_decode,1,2026-04-29T23:04:34+00:00,20260429T230230Z_black_box_vllm_sglang
+running_samples,5,7,sglang,baseline,1,2026-04-29T23:04:34+00:00,20260429T230230Z_black_box_vllm_sglang
+running_samples,6,7,sglang,kv_cache_quant,1,2026-04-29T23:04:34+00:00,20260429T230230Z_black_box_vllm_sglang
+running_samples,7,7,sglang,spec_decode,1,2026-04-29T23:04:34+00:00,20260429T230230Z_black_box_vllm_sglang
+running_standard_evaluator,1,7,llama_cpp,baseline,1,2026-04-29T23:16:26+00:00,20260429T230230Z_black_box_vllm_sglang
+condition_completed,1,7,llama_cpp,baseline,1,2026-04-29T23:16:26+00:00,20260429T230230Z_black_box_vllm_sglang

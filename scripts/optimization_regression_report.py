@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Build an optimization regression report: baseline correct → optimized wrong (same engine),
-plus cross-optimization patterns. Includes GSM8K problem text, expected answer, extracted
+plus cross-optimization patterns. Includes problem text (GSM8K or long-context slice), expected answer, extracted
 final numerics, and response tails per mode.
 
 Writes:
@@ -69,14 +69,17 @@ def main() -> int:
         raise FileNotFoundError(graded_path)
 
     df = pd.read_csv(graded_path)
-    df = df[df["task_id"].astype(str).str.startswith("gsm8k")].copy()
+    tid = df["task_id"].astype(str)
+    df = df[tid.str.startswith("gsm8k") | tid.str.startswith("longbench")].copy()
     if df.empty:
-        raise RuntimeError("No GSM8K rows in graded table.")
+        raise RuntimeError("No gsm8k or longbench rows in graded table.")
 
     backends = ["vllm", "sglang"]
     modes = ["baseline", "kv_cache_quant", "spec_decode"]
 
     rows_out: list[dict[str, object]] = []
+    ngraded = len(df)
+    n_sid = int(df["sample_id"].nunique())
     md: list[str] = [
         "# Optimization-induced regressions (same engine)",
         "",
@@ -84,9 +87,16 @@ def main() -> int:
         "",
         "- **Regression**: that engine’s **baseline** graded **correct**, while an **optimization mode** graded **wrong**.",
         "- **Cross-opt**: how KV-quant vs speculative decoding disagree when baseline was correct.",
-        "- Answers shown use the same **last-number** GSM8K heuristic as grading (`extract_numeric`). Response snippets are **tails** (final ~550 chars).",
+        "- Answers shown use the same **numeric** grading heuristic (`extract_numeric` / last-number GSM8K-style). Response snippets are **tails** (final ~550 chars).",
         "",
         "**What “baseline” means:** Under **`## Endpoint: vllm`**, **baseline** is the **vLLM** deployment with `optimization_mode=baseline` (**no** KV quantization, **no** speculative decoding)—not llama.cpp. Under **`## Endpoint: sglang`**, **baseline** is the same pattern for **SGLang**. Table columns labeled **`baseline`** / **`kv_cache_quant`** / **`spec_decode`** are those three deployments for that endpoint only.",
+        "",
+        "## Graded-data summary",
+        "",
+        f"- **{ngraded:,}** graded rows in scope; **{n_sid}** distinct `sample_id`.",
+        "- Rows are **`gsm8k*`** or **`longbench*`** tasks only (`all_samples_graded.csv` filtered the same way).",
+        "- **Case-study Markdown and `optimization_regression_detail.csv`** are filled **only when** some sample matches a regression or recovery pattern below.",
+        "- **Zeros in every pattern row are usual when results are intact:** optimizations never disagreed with that engine’s **baseline correctness**—i.e. no baseline ✓ paired with KV/spec ✗, and no baseline ✗ “fixed only” by an optimization.",
         "",
         "---",
         "",
@@ -118,6 +128,15 @@ def main() -> int:
         md.append(f"## Endpoint: **{backend}**")
         md.append("")
         md.append(f"_Samples with baseline + KV + spec rows: **{len(complete_ids)}**_")
+        unified = sum(
+            1
+            for sid in complete_ids
+            if len({str(wide[sid][m]["correctness"]).strip().lower() for m in modes}) == 1
+        )
+        md.append(
+            f"_Same correctness label across baseline/KV/spec: **{unified}/{len(complete_ids)}** samples "
+            f"({len(complete_ids) - unified} mixed)._"
+        )
         md.append("")
 
         kv_reg: list[str] = []

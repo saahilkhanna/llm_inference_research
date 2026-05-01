@@ -1,0 +1,4 @@
+event,rows,missing_numeric_prediction,missing_rate,run_id
+gsm8k_numeric_extraction_check,1050,0.0,0.0,20260429T230230Z_black_box_vllm_sglang
+gsm8k_numeric_extraction_check,1050,0.0,0.0,20260429T230230Z_black_box_vllm_sglang
+integrity_postcheck_passed,1050,,,20260429T230230Z_black_box_vllm_sglang
