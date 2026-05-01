@@ -11,6 +11,7 @@ import yaml
 from dotenv import load_dotenv
 
 
+# Handle types
 def _to_bool(value: str | None, default: bool) -> bool:
     if value is None:
         return default
@@ -54,6 +55,7 @@ def _vllm_spec_decode_args(base_args: list[str], draft_model: str, num_speculati
     }
     if draft_model:
         cfg["model"] = draft_model
+        
     # vLLM>=0.16 expects speculative decoding knobs via `--speculative_config JSON` (underscore flag).
     speculative = json.dumps(cfg, separators=(",", ":"), ensure_ascii=True)
     return [*base_args, "--speculative_config", speculative]
@@ -61,6 +63,7 @@ def _vllm_spec_decode_args(base_args: list[str], draft_model: str, num_speculati
 
 def _sglang_spec_decode_args(base_args: list[str], draft_model: str, num_steps: int) -> list[str]:
     args = [*base_args]
+    
     # SGLang v0.5.x uses `--speculative-draft-model-path` (alias `--speculative-draft-model` also exists).
     if draft_model:
         args.extend(
@@ -168,6 +171,8 @@ class AppConfig:
     standard_eval_tasks: list[str]
     standard_eval_run_on_all_conditions: bool
     standard_eval_limit_override: int
+    standard_eval_humaneval_code_only_prompt: bool
+    standard_eval_humaneval_system_prompt: str
     public_task_ids: list[str]
     public_benchmark_enabled: bool
     custom_workload_enabled: bool
@@ -279,6 +284,7 @@ class AppConfig:
                 raise ValueError("Set VLLM_ENDPOINT_URL when running vllm in manual mode.")
             if "sglang" in self.engines and not has_any_sglang_url:
                 raise ValueError("Set SGLANG_ENDPOINT_URL when running sglang in manual mode.")
+            
             # Integrity guard: with optimization experiments in manual mode, require explicit
             # per-mode endpoint URLs so each condition maps to an intentionally configured server.
             for backend in ("vllm", "sglang"):
@@ -337,7 +343,7 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
     create_endpoints_value = os.getenv("CREATE_ENDPOINTS")
     create_endpoints_default = _to_bool(create_endpoints_value, True)
 
-    # Convenience alias: allow a single endpoint URL var for quick manual vLLM/SGLang runs.
+    # This is our convenience alias: allow a single endpoint URL var for quick manual vLLM/SGLang runs.
     # llama.cpp remains explicit because it is normally a separate local server baseline.
     if target_llm_base_url and not vllm_url and not sglang_url:
         vllm_url = target_llm_base_url
@@ -488,6 +494,13 @@ def load_config(env_path: str = ".env", defaults_path: str = "config/default.yam
         standard_eval_tasks=_to_list(os.getenv("STANDARD_EVAL_TASKS"), ["gsm8k"]),
         standard_eval_run_on_all_conditions=_to_bool(os.getenv("STANDARD_EVAL_RUN_ON_ALL_CONDITIONS"), False),
         standard_eval_limit_override=_to_int(os.getenv("STANDARD_EVAL_LIMIT_OVERRIDE"), 0),
+        standard_eval_humaneval_code_only_prompt=_to_bool(
+            os.getenv("STANDARD_EVAL_HUMANEVAL_CODE_ONLY_PROMPT"), True
+        ),
+        standard_eval_humaneval_system_prompt=os.getenv(
+            "STANDARD_EVAL_HUMANEVAL_SYSTEM_PROMPT",
+            "Return only valid Python code for the target function. No markdown fences. No prose.",
+        ).strip(),
         public_task_ids=_to_list(os.getenv("PUBLIC_TASK_IDS"), []),
         public_benchmark_enabled=_to_bool(os.getenv("PUBLIC_BENCHMARK_ENABLED"), True),
         custom_workload_enabled=_to_bool(os.getenv("CUSTOM_WORKLOAD_ENABLED"), True),
