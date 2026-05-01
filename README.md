@@ -1,13 +1,11 @@
 # Black-Box Inference Backend Failure Study
+This is the research pipeline we have to compare **llama.cpp**, **vLLM**, and **SGLang** as black-box inference backends.
 
-This project builds a reproducible, one-command research pipeline to compare **llama.cpp**, **vLLM**, and **SGLang** as black-box inference backends.
-
-It answers:
-1. How a minimal llama.cpp serving baseline differs from vLLM and SGLang in performance and failure behavior across public and custom workloads.
-2. Whether optimization-oriented inference settings correlate with observable quality failures, especially for long-context and workload-specific prompts.
+We aimed to answer:
+1. How a minimal llama.cpp serving baseline differs from vLLM and SGLang in performance and failure behavior across various different workloads. 
+2. Whether optimization oriented inference settings correlate/change observable quality failures, especially for long-context and workload-specific prompts.
 
 ## What this project does
-
 - Runs the same cached public and custom prompts against the configured backends.
 - Saves raw request/response artifacts per sample.
 - Grades outputs conservatively (`correct`, `wrong`, `unknown`).
@@ -23,13 +21,10 @@ It answers:
 - Generates a final Markdown report.
 
 ## Claim boundaries
-
 We treat llama.cpp, vLLM, and SGLang as black-box inference backends. Because the experiment uses managed endpoints and request-level logs, we focus on observable behavior rather than low-level GPU internals.
-
 We do not claim that observed quality differences are definitively caused by KV-cache management, scheduling, or GPU memory behavior. Establishing that requires lower-level instrumentation and controlled ablations.
 
 ## Project layout
-
 ```text
 .
 ├── README.md
@@ -128,17 +123,14 @@ make shutdown
 
 For complete run flags and command recipes, see `RUN_FLAGS.md`.
 
-## Cost safety
-
+## We wanted to ensure resuls before we ran longer more in-depth runs
 - Smoke test first (`make smoke`).
 - Backends run sequentially by default (`RUN_BACKENDS_SEQUENTIALLY=true`).
 - Endpoints are paused by default after run (`SHUTDOWN_MODE=pause`).
-- The manifest and report include runtime/cost context when available.
 
 If endpoints are manually supplied and persistent, verify billing state in Hugging Face dashboard after runs.
 
 ## Where results are saved
-
 Each run writes to `results/<RUN_ID>/`:
 - `manifest.json`
 - `tool_selection_memo.md`
