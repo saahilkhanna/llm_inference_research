@@ -11,12 +11,12 @@ make setup             # Python 3.11+ recommended; creates .venv and installs de
 
 ## 2. How workloads are dispatched
 
-The runner loads configuration from `.env` (see `src/config.py`). It builds a **list of conditions**: each `(engine, optimization_mode)` pair gets its own Hugging Face Inference Endpoint URL (when using managed endpoints) or a URL you supply (manual mode). For each condition it runs the same **sample workloads**—public benchmarks and/or synthetic custom prompts—that you enabled in the environment.
+The runner loads configuration from `.env` (see `src/config.py`). It builds a **list of conditions**: each (engine, optimization_mode) pair gets its own Hugging Face Inference Endpoint URL (when using managed endpoints) or a URL you supply (manual mode). For each condition it runs the same **sample workloads**—public benchmarks and/or synthetic custom prompts—that you enabled in the environment.
 
-**Engines:** `ENGINES` (comma-separated): `llama_cpp`, `vllm`, `sglang`.
+**Engines:** llama_cpp, vllm, sglang.
 
-**Optimization modes:** `OPTIMIZATION_MODES`: `baseline`, `kv_cache_quant`, `spec_decode`.  
-Llama.cpp is only evaluated at **`baseline`**; vLLM and SGLang are evaluated at **every** configured mode.
+**Optimization modes:**  baseline, kv_cache_quant, spec_decode.  
+Llama.cpp is only evaluated at baseline; vLLM and SGLang are evaluated at every configured mode.
 
 **Managed versus manual endpoints:**
 
