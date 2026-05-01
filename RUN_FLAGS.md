@@ -1,6 +1,6 @@
 # Run Flags and Execution Guide
 
-This is the practical reference for running the current pipeline while keeping integrity checks and run logs.
+This is the our reference for running the current pipeline while keeping integrity checks and run logs.
 
 ## Main Commands
 
@@ -71,7 +71,7 @@ make shutdown
 - `MAX_ESTIMATED_COST_USD`
 - `AIPERF_ENABLED`, `AIPERF_SYNTHETIC_ENABLED`
 
-## Recommended Recipes
+## Example of a test we ran
 
 ### Managed endpoints (7-condition matrix)
 
@@ -80,26 +80,4 @@ ENGINES=llama_cpp,vllm,sglang \
 OPTIMIZATION_MODES=baseline,kv_cache_quant,spec_decode \
 CREATE_ENDPOINTS=true \
 make all
-```
-
-### Manual endpoints with explicit per-mode URLs
-
-```bash
-CREATE_ENDPOINTS=false \
-ENGINES=llama_cpp,vllm,sglang \
-OPTIMIZATION_MODES=baseline,kv_cache_quant,spec_decode \
-LLAMA_CPP_ENDPOINT_URL=http://localhost:8080 \
-VLLM_ENDPOINT_URL_BASELINE=https://... \
-VLLM_ENDPOINT_URL_KV_CACHE_QUANT=https://... \
-VLLM_ENDPOINT_URL_SPEC_DECODE=https://... \
-SGLANG_ENDPOINT_URL_BASELINE=https://... \
-SGLANG_ENDPOINT_URL_KV_CACHE_QUANT=https://... \
-SGLANG_ENDPOINT_URL_SPEC_DECODE=https://... \
-make all
-```
-
-### Integrity verification after a stage run
-
-```bash
-python scripts/verify_run_integrity.py --run-dir "<results_run_dir>"
 ```
