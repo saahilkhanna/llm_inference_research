@@ -6,7 +6,7 @@ We aimed to answer:
 2. Whether optimization oriented inference settings correlate/change observable quality failures, especially for long-context and workload-specific prompts.
 
 ## What this project does
-- Runs the same cached public and custom prompts against the configured backends.
+- Runs the workload prompts against the configured backends.
 - Saves raw request/response artifacts per sample.
 - Grades outputs conservatively (`correct`, `wrong`, `unknown`).
 - Produces per-sample comparison CSVs and failure buckets:
@@ -140,11 +140,9 @@ Each run writes to `results/<RUN_ID>/`:
 - `processed/failure_bucket_summary.csv`
 - `processed/engine_mode_summary.csv`
 - `processed/latency_summary.csv`
-- `case_studies/case_studies.csv`
-- `case_studies/case_studies.md`
-- `report/final_summary.md`
-- `report/final_summary.txt`
 - `logs/`
+
+  The log file dynamically updates to show where you are in your run^
 
 ## Interpreting failure buckets
 
@@ -157,3 +155,4 @@ Each run writes to `results/<RUN_ID>/`:
 
 These buckets support black-box failure characterization without overclaiming internal causes.
 `engine_mode_summary.csv` and `latency_summary.csv` include all configured engines, including the llama.cpp baseline.
+
