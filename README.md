@@ -6,7 +6,7 @@ Pipeline for comparing **llama.cpp**, [**vLLM**](https://github.com/vllm-project
 
 ## Start here (clone → credentials → one-command smoke)
 
-Follow these steps once from a fresh clone. **Use your own Hugging Face token** — we do not provide credentials.
+Follow these steps once from a fresh clone. **Use your own Hugging Face token**, we do not provide credentials.
 
 ### 1) Prerequisites on your machine
 
@@ -38,7 +38,7 @@ What **`scripts/smoke_from_scratch.sh`** does:
 2. Verifies **`HF_TOKEN`** and **`HF_NAMESPACE`** are set (parses `.env` with **`python-dotenv`**, avoiding fragile `source .env` on complex values).
 3. Runs **`python -m src.main --mode smoke`** with **conservative overrides**: by default single **`vLLM`** engine, **`baseline`** optimization only, **`STANDARD_EVAL_ENABLED=false`** for this first wiring check. Smoke mode still respects **`SMOKE_LIMIT`** from `.env`.
 
-**Disclaimer:** Our research runs used **staged multi-backend grids**, HumanEval/`lm_eval`, and larger limits — that is **more in-depth** than this smoke path. The script above is only the **shortest path** to prove the repo, Python env, HF auth, and endpoint path work end-to-end.
+**Disclaimer:** Our research runs used **staged multi-backend grids**, HumanEval/`lm_eval`, and larger limits, that is **more in-depth** than this smoke path. The script above is only the **shortest path** to prove the repo, Python env, HF auth, and endpoint path work end-to-end.
 
 Optional environment overrides for the smoke script (all optional):
 
@@ -52,8 +52,6 @@ Optional environment overrides for the smoke script (all optional):
 ---
 
 ## Experimental configuration, open-source stack, code size, and datasets
-
-*(Course-style disclosure for measurement-based projects.)*
 
 This repository implements an **experimental measurement** workflow: replay fixed workloads against live inference endpoints and record latency, token estimates, HTTP outcomes, and graded correctness (plus optional external eval).
 
