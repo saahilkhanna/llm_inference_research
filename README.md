@@ -1,18 +1,18 @@
 # Black-Box Inference Backend Failure Study
 
-Pipeline for comparing **llama.cpp**, [**vLLM**](https://github.com/vllm-project/vllm), and [**SGLang**](https://github.com/sgl-project/sglang) as black-box inference backends via HTTP.
+This is our pipeline for comparing **llama.cpp**, [**vLLM**](https://github.com/vllm-project/vllm), and [**SGLang**](https://github.com/sgl-project/sglang) as black-box inference backends via HTTP.
 
 **Documentation:** README.md (this file) is the main entry. Use **RUN_FLAGS.md** for environment variables, flags, and command recipes, and **RUN_WORKLOAD.md** for workload sizing and what each mode runs.
 
 ---
 
-## Start here (fresh clone, credentials, one-command smoke)
+## How to execute yourself, we tried to make it easy! (fresh clone, credentials, one-command smoke)
 
-Follow these steps once from a fresh clone. **Use your own Hugging Face token.** We do not provide credentials.
+Follow these steps:. **Use your own Hugging Face token.** We do not provide credentials.
 
 ### 1) Prerequisites on your machine
 
-- **Python 3.11+** (3.12 recommended).
+- **Python 3.11+** (3.12 recommended). 
 - A **[Hugging Face](https://huggingface.co/join) account**.
 
 ### 2) Model access (example: Meta Llama)
