@@ -1,12 +1,15 @@
 SHELL := /bin/bash
 
-.PHONY: setup smoke staged-backends single-workload all online shutdown clean
+.PHONY: setup smoke smoke-from-scratch staged-backends single-workload all online shutdown clean
 
 setup:
 	bash scripts/setup_env.sh
 
 smoke:
 	bash scripts/run_smoke.sh
+
+smoke-from-scratch:
+	bash scripts/smoke_from_scratch.sh
 
 staged-backends:
 	bash scripts/run_backend_staged_sequence.sh
